@@ -338,12 +338,12 @@ Prices as read from public pages and listings in November 2026. Plans change and
 
 Measured example: 200 stories in 3 modes (600 possible snapshots), `affected` on, on one Linux machine with a warm webpack cache.
 
-| Change in the pull request | Stories shot | Snapshots | OpenSnapshot run | OpenSnapshot CI cost | Chromatic, over the plan |
+| Change in the pull request | Stories shot | Snapshots | `opensnapshot run` (measured) | OpenSnapshot CI job (estimate) | Chromatic, over the plan (calculated) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| One component | 2 of 200 | 6 | 24 s | about $0.006 | $0.05 |
-| The base theme (every story imports it) | 200 of 200 | 600 | 6.6 min | about $0.04 | $4.80 |
+| One component | 2 of 200 | 6 | 24 s | about $0.02 to $0.03 | $0.05 |
+| The base theme (every story imports it) | 200 of 200 | 600 | 6.6 min | about $0.05 | $4.80 |
 
-CI cost is the minutes, rounded up, times $0.006. Chromatic cost is snapshots times $0.008, and only applies after the plan's included snapshots. A change to a shared theme reaches every story, so both tools shoot everything. The stories here are tiny and the cache was warm: a cold CI build and real stories take longer, so measure your own project.
+The measured time is the `opensnapshot run` command alone, with both builds included. A real CI job also checks out the repository, installs dependencies and sets up the browser, so the CI cost is an estimate: a few minutes per job (a job is rounded up to whole minutes) times $0.006. Chromatic cost is snapshots times $0.008, and only applies after the plan's included snapshots. A change to a shared theme reaches every story, so both tools shoot everything. The stories here are tiny and the cache was warm: a cold CI build and real stories take longer, so measure your own project.
 
 OpenSnapshot is for teams that want a visual diff on every pull request without a service. It is not a review workflow: it does not block merges and has no approval state. The review page layout is inspired by hosted visual-review tools.
 
