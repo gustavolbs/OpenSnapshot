@@ -336,7 +336,14 @@ OpenSnapshot has no per-snapshot fee. What you pay for is the infrastructure you
 
 Prices as read from public pages and listings in November 2026. Plans change and the numbers differ between sources, so check [chromatic.com/pricing](https://www.chromatic.com/pricing), [GitHub's runner pricing](https://docs.github.com/en/billing/reference/actions-runner-pricing) and [vercel.com/pricing](https://vercel.com/pricing) before you decide.
 
-A rough way to compare, with your own numbers: Chromatic cost per run is `snapshots x $0.008` once you pass the plan. OpenSnapshot cost per run is `minutes x $0.006`. For example, 600 snapshots (200 stories in 3 modes) is $4.80 on Chromatic's per-snapshot rate, and 10 CI minutes is $0.06 on a private repository. The 10 minutes is an assumption; measure a real run. The gap shrinks as runs get long: OpenSnapshot builds twice and shoots every item twice, so a large Storybook without `affected` costs more minutes. Chromatic also counts a snapshot per browser and skips unaffected stories with TurboSnap, so its number can be lower than the example too.
+Measured example: 200 stories in 3 modes (600 possible snapshots), `affected` on, on one Linux machine with a warm webpack cache.
+
+| Change in the pull request | Stories shot | Snapshots | OpenSnapshot run | OpenSnapshot CI cost | Chromatic, over the plan |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| One component | 2 of 200 | 6 | 24 s | about $0.006 | $0.05 |
+| The base theme (every story imports it) | 200 of 200 | 600 | 6.6 min | about $0.04 | $4.80 |
+
+CI cost is the minutes, rounded up, times $0.006. Chromatic cost is snapshots times $0.008, and only applies after the plan's included snapshots. A change to a shared theme reaches every story, so both tools shoot everything. The stories here are tiny and the cache was warm: a cold CI build and real stories take longer, so measure your own project.
 
 OpenSnapshot is for teams that want a visual diff on every pull request without a service. It is not a review workflow: it does not block merges and has no approval state. The review page layout is inspired by hosted visual-review tools.
 

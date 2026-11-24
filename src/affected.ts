@@ -84,7 +84,8 @@ function chromaticTrace(bin: string, root: string, relDir: string, stats: string
             output
                 .split("\n")
                 .filter((line) => line.startsWith("— "))
-                .map((line) => `./${path.relative(base, line.slice(2).trim())}`),
+                // Real output reads "— src/A.stories.js + 3 modules": drop the module count.
+                .map((line) => `./${path.relative(base, line.slice(2).replace(/ \+ \d+ modules?$/, "").trim())}`),
         );
     };
 }

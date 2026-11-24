@@ -161,7 +161,7 @@ export default defineConfig({
 `;
     // A stand-in for \`chromatic trace\`: it lists a stories file when that file is among the changed ones.
     const fakeChromatic = `#!/usr/bin/env node
-for (const file of process.argv.slice(2)) if (file.endsWith(".stories.js")) console.log("\u2014 " + file);
+for (const file of process.argv.slice(2)) if (file.endsWith(".stories.js")) console.log("\u2014 " + file + " + 1 modules");
 `;
     const prepare = (dir: string) => {
         writeFileSync(path.join(dir, "storybook-static/preview-stats.json"), JSON.stringify({ modules: [] }));
