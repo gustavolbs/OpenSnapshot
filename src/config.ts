@@ -31,6 +31,13 @@ export type Source =
 export type Config = {
     /** Label for this project on the review page and in the summary, for example `web` or `docs`. */
     name?: string;
+    /**
+     * Your other projects, as `{ name: review URL }`, for example `{ web: "https://web-opensnapshot.vercel.app" }`.
+     * The review page gets a project selector, and `opensnapshot index` builds a page that lists them all.
+     */
+    projects?: Record<string, string>;
+    /** URL of the page `opensnapshot index` built. Adds an "All projects" link to the selector. */
+    projectsHome?: string;
     /** Ref to compare against. Default `origin/main`. */
     baseRef?: string;
     /** How to produce the static site. Without `command`, `output` is served as it is. */
@@ -66,6 +73,8 @@ export type Config = {
 export type ResolvedConfig = Required<Pick<Config, "baseRef" | "deviceScaleFactor" | "threshold" | "maxDiffPixelRatio" | "port" | "failOnChanges">> &
     Pick<Config, "build" | "install" | "source"> & {
         name?: string;
+        projects?: { name: string; url: string }[];
+        projectsHome?: string;
         affected?: { stats: string; always: RegExp[] };
         projectDir: string;
         outDir: string;
@@ -114,6 +123,8 @@ export function resolveConfig(config: Config, projectDir: string, overrides: { b
         install: config.install,
         source: config.source,
         name: config.name,
+        projects: config.projects && Object.entries(config.projects).map(([name, url]) => ({ name, url })),
+        projectsHome: config.projectsHome,
         projectDir,
         outDir,
         showModes: Object.keys(config.modes ?? {}).length > 0,

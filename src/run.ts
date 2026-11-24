@@ -8,7 +8,7 @@ import { findConfig, loadConfig, resolveConfig, type ResolvedConfig } from "./co
 import { detectInstall, git, resolveRefs } from "./git.js";
 import { pagesToItems, storiesFromIndex, type Item } from "./items.js";
 import type { Manifest, Summary } from "./manifest.js";
-import { writeReviewPage, writeSummary } from "./review-page.js";
+import { writeProjectsPage, writeReviewPage, writeSummary } from "./review-page.js";
 import { close, serve } from "./serve.js";
 
 export type RunOptions = { cwd: string; config?: string; base?: string; out?: string; failOnChanges?: boolean };
@@ -116,7 +116,7 @@ export async function run(options: RunOptions): Promise<number> {
     if (!items.length) {
         // Nothing to compare: skip the base build and both passes, but leave the same files behind.
         const summary: Summary = { changed: 0, new: 0, unchanged: 0, skipped: 0, errors: [], notAffected };
-        writeReviewPage(path.join(config.outDir, "review"), { name: config.name, showModes: config.showModes, base, head, labels: { group: "Components", item: "Stories" }, groups: 0, unchanged: 0, skipped: 0, errors: [], items: [] });
+        writeReviewPage(path.join(config.outDir, "review"), { name: config.name, showModes: config.showModes, base, head, projects: config.projects, home: config.projectsHome, labels: { group: "Components", item: "Stories" }, groups: 0, unchanged: 0, skipped: 0, errors: [], items: [] });
         writeSummary(config.outDir, summary, { name: config.name, base: base.ref || base.sha, head: head.ref || head.sha });
         log("no story is affected by the change: nothing to compare");
         return 0;
@@ -133,6 +133,8 @@ export async function run(options: RunOptions): Promise<number> {
         modes: config.modes,
         base,
         head,
+        projects: config.projects,
+        home: config.projectsHome,
         notAffected,
     };
     const manifestFile = path.join(config.outDir, "manifest.json");
@@ -169,6 +171,30 @@ export async function review(options: Pick<RunOptions, "cwd" | "config" | "out">
     if (!existsSync(path.join(dir, "index.html"))) throw new Error(`No review page in ${dir}. Run \`opensnapshot run\` first.`);
     await serve(dir, port ?? 6106);
     log(`review page at http://localhost:${port ?? 6106}  (Ctrl+C to stop)`);
+}
+
+/** Reads each project's `summary.json` from its review URL and writes the page that lists them. */
+export async function projectsIndex(options: Pick<RunOptions, "cwd" | "config" | "out">): Promise<string> {
+    const file = options.config ? path.resolve(options.cwd, options.config) : findConfig(options.cwd);
+    if (!file || !existsSync(file)) throw new Error("No opensnapshot.config.ts found. Create one (see the README) or pass --config.");
+    const config = await loadConfig(file);
+    const projects = Object.entries(config.projects ?? {});
+    if (!projects.length) throw new Error("Set `projects` in the config: { name: review URL }.");
+    const rows = await Promise.all(
+        projects.map(async ([name, url]) => {
+            try {
+                const response = await fetch(new URL("summary.json", url.endsWith("/") ? url : `${url}/`), { signal: AbortSignal.timeout(10_000) });
+                return { name, url, summary: response.ok ? ((await response.json()) as Summary) : undefined };
+            } catch {
+                return { name, url };
+            }
+        }),
+    );
+    const dir = path.resolve(options.cwd, options.out ?? path.join(path.dirname(file), config.outDir ?? ".opensnapshot", "projects"));
+    writeProjectsPage(dir, rows);
+    for (const row of rows) if (!row.summary) log(`warning: no summary.json at ${row.url}`);
+    log(`projects page: ${path.join(dir, "index.html")}`);
+    return dir;
 }
 
 /** Installs the Playwright browser that matches the bundled Playwright version. */

@@ -1,10 +1,11 @@
 // Regenerates the screenshots in docs/img from examples/static-site: `pnpm docs:images`.
 // It makes a throwaway git repo, changes the home page, runs OpenSnapshot and photographs the review pages.
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium } from "@playwright/test";
+import { close, serve } from "../dist/serve.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const images = path.join(root, "docs/img");
@@ -64,4 +65,43 @@ await shoot(single, [
     { name: "single-mode-overview", hash: "" },
     { name: "single-mode-item", hash: "#1" },
 ]);
+
+// Several projects: the selector on a review page, and the page that lists every project.
+const projectsConfig = `import { defineConfig } from "opensnapshot";
+export default defineConfig({
+    name: "web",
+    build: { output: "site" },
+    source: { type: "urls", pages: ["/"] },
+    projects: { web: "http://127.0.0.1:6194/web", docs: "http://127.0.0.1:6194/docs", marketing: "http://127.0.0.1:6194/marketing" },
+    projectsHome: "http://127.0.0.1:6194/",
+});
+`;
+const company = makeChange();
+writeFileSync(path.join(company, "opensnapshot.projects.config.ts"), projectsConfig);
+run(company, "--config", "opensnapshot.projects.config.ts");
+await shoot(company, [{ name: "project-selector", hash: "", height: 520, before: (page) => page.click("details.projects summary") }]);
+
+// Three projects that deployed a review with a summary.json: web with changes, docs clean, marketing with an error.
+const minutes = (n) => new Date(Date.now() - n * 60_000).toISOString();
+const site = mkdtempSync(path.join(tmpdir(), "opensnapshot-projects-"));
+for (const [name, summary] of Object.entries({
+    web: { changed: 2, new: 1, unchanged: 211, skipped: 0, errors: [], head: "feature/new-button", at: minutes(8) },
+    docs: { changed: 0, new: 0, unchanged: 38, skipped: 0, errors: [], head: "main", at: minutes(75) },
+    marketing: { changed: 0, new: 0, unchanged: 11, skipped: 0, errors: [{ id: "pricing", message: "404" }], head: "fix/pricing", at: minutes(60 * 26) },
+})) {
+    mkdirSync(path.join(site, name));
+    writeFileSync(path.join(site, name, "summary.json"), JSON.stringify(summary));
+}
+const server = await serve(site, 6194);
+const listing = path.join(company, "projects-page");
+// Async: the server above lives in this process and must keep answering while the command runs.
+await new Promise((resolve, reject) =>
+    spawn(process.execPath, [path.join(root, "dist/cli.js"), "index", "--config", "opensnapshot.projects.config.ts", "--out", listing], { cwd: company, stdio: "inherit" }).on("close", (code) => (code ? reject(new Error("index failed")) : resolve())),
+);
+const page = await browser.newPage({ viewport: { width: 1000, height: 300 } });
+await page.goto(`file://${path.join(listing, "index.html")}`);
+await page.waitForTimeout(300);
+await page.screenshot({ path: path.join(images, "projects-index.png") });
+console.log("docs/img/projects-index.png");
+await close(server);
 await browser.close();

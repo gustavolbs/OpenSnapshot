@@ -11,6 +11,8 @@ export type Manifest = {
     modes: Record<string, Mode>;
     base: { sha: string; ref: string };
     head: { sha: string; ref: string };
+    projects?: { name: string; url: string }[];
+    home?: string;
     /** Stories left out because the change cannot affect them (`affected` option). */
     notAffected?: number;
 };
@@ -30,6 +32,10 @@ export type Snapshot = {
 
 export type ChangedItem = { id: string; title: string; name: string; snapshots: Snapshot[] };
 export type Summary = {
+    /** Added by `writeSummary`, so a page that lists projects can read them from `summary.json`. */
+    name?: string;
+    head?: string;
+    at?: string;
     changed: number;
     new: number;
     unchanged: number;

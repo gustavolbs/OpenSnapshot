@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenSnapshot: projects</title>
+<style>
+:root {
+    --text: #2e3338; --muted: #5c6570; --line: rgb(38 74 115 / .15); --blue: #0064d6;
+    --green: #0b7a3b; --green-bg: #e8f6ee; --amber: #8a5a00; --amber-bg: #fff3d6; --red: #b3261e; --red-bg: #fdeceb; --gray-bg: #eef0f2;
+    font: 14px/20px "Nunito Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: var(--text);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #fff; }
+main { max-width: 960px; margin: 0 auto; padding: 40px 20px; }
+h1 { margin: 0 0 4px; font-size: 20px; line-height: 28px; }
+.lead { margin: 0 0 24px; color: var(--muted); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.project { display: grid; gap: 6px; padding: 16px; border-radius: 10px; box-shadow: 0 0 0 1px var(--line); color: inherit; text-decoration: none; }
+.project:hover { box-shadow: 0 0 0 1px var(--blue); }
+.project:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.top b { font-size: 16px; overflow: hidden; text-overflow: ellipsis; }
+.badge { flex: none; padding: 2px 10px; border-radius: 99px; font-size: 12px; line-height: 20px; font-weight: 700; }
+.pass { background: var(--green-bg); color: var(--green); }
+.changes { background: var(--amber-bg); color: var(--amber); }
+.error { background: var(--red-bg); color: var(--red); }
+.none { background: var(--gray-bg); color: var(--muted); }
+.line { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (prefers-reduced-motion: no-preference) { .project { transition: box-shadow .15s; } }
+</style>
+</head>
+<body>
+<main>
+<h1>Projects</h1>
+<p class="lead">The latest OpenSnapshot run of each project.</p>
+<div class="grid" id="grid"></div>
+</main>
+<script>
+const projects = /*DATA*/null;
+const badge = (summary) => {
+    if (!summary) return ["No data", "none"];
+    if (summary.errors?.length) return [`${summary.errors.length} error${summary.errors.length === 1 ? "" : "s"}`, "error"];
+    const changes = summary.changed + summary.new;
+    return changes ? [`${changes} change${changes === 1 ? "" : "s"}`, "changes"] : ["No changes", "pass"];
+};
+const ago = (iso) => {
+    const minutes = Math.max(0, Math.round((Date.now() - new Date(iso)) / 60000));
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return `${minutes} min ago`;
+    return minutes < 1440 ? `${Math.round(minutes / 60)} h ago` : `${Math.round(minutes / 1440)} d ago`;
+};
+const el = (tag, props = {}, ...children) => {
+    const node = Object.assign(document.createElement(tag), props);
+    node.append(...children);
+    return node;
+};
+document.getElementById("grid").append(...projects.map(({ name, url, summary }) => {
+    const [text, kind] = badge(summary);
+    const where = summary ? [summary.head, summary.at && ago(summary.at)].filter(Boolean).join(" · ") : "Could not read summary.json";
+    return el("a", { className: "project", href: url },
+        el("div", { className: "top" }, el("b", { textContent: name }), el("span", { className: `badge ${kind}`, textContent: text })),
+        el("div", { className: "line", textContent: where }));
+}));
+</script>
+</body>
+</html>

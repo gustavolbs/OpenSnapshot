@@ -191,7 +191,7 @@ for (const file of process.argv.slice(2)) if (file.endsWith(".stories.js")) cons
         const result = run(dir);
         expect(result.status).toBe(0);
         expect(result.stdout).toContain("nothing to compare");
-        expect(summary(dir)).toEqual({ changed: 0, new: 0, unchanged: 0, skipped: 0, errors: [], notAffected: 3 });
+        expect(summary(dir)).toMatchObject({ changed: 0, new: 0, unchanged: 0, skipped: 0, errors: [], notAffected: 3 });
         expect(reviewData(dir).items).toEqual([]);
         expect(readFileSync(path.join(dir, ".opensnapshot/summary.md"), "utf8")).toContain("3 stories are not affected by the change");
         expect(existsSync(path.join(dir, ".opensnapshot/base"))).toBe(false);

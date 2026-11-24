@@ -66,6 +66,17 @@ header { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center
     @keyframes strobe-still { 50% { filter: hue-rotate(180deg) opacity(.7); } }
 }
 
+.projects { position: relative; display: inline-block; vertical-align: middle; }
+.projects summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgb(38 74 115 / .25); font-size: 14px; font-weight: 700; color: var(--text); }
+.projects summary::-webkit-details-marker { display: none; }
+.projects summary::after { content: ""; width: 6px; height: 6px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg) translate(-2px, -2px); }
+.projects summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.projects .menu { position: absolute; top: 34px; left: 0; z-index: 5; min-width: 210px; display: grid; padding: 6px; background: #fff; border-radius: 8px; box-shadow: 0 0 0 1px var(--line), 0 6px 20px rgb(0 0 0 / .12); }
+.projects .menu a { padding: 7px 10px; border-radius: 6px; font-size: 14px; color: var(--text); text-decoration: none; }
+.projects .menu a:hover { background: rgb(38 74 115 / .06); }
+.projects .menu a[aria-current] { background: var(--blue-bg); color: var(--blue); font-weight: 700; }
+.projects .menu a.all { margin-top: 4px; border-top: 1px solid var(--line); border-radius: 0 0 6px 6px; color: var(--muted); }
+
 [data-tip] { position: relative; }
 [data-tip]:hover::after, [data-tip]:focus-visible::after {
     content: attr(data-tip); position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 3;
@@ -175,6 +186,18 @@ const button = (label, tip, pressed, onclick, ...content) => {
     return el;
 };
 const set = (change) => { Object.assign(state, change); render(); };
+// Other projects of the same company, from `projects` in the config. Native <details>, so it works with the keyboard.
+function switcher() {
+    if (!data.projects?.length) return "";
+    const menu = $("div", { className: "menu" }, ...data.projects.map((project) => {
+        const link = $("a", { href: project.url, textContent: project.name });
+        if (project.name === data.name) link.setAttribute("aria-current", "page");
+        return link;
+    }));
+    if (data.home) menu.append($("a", { className: "all", href: data.home, textContent: "All projects" }));
+    return $("details", { className: "projects" }, $("summary", { textContent: data.name ?? "Projects", ariaLabel: "Switch project" }), menu);
+}
+document.addEventListener("click", (event) => document.querySelectorAll("details.projects[open]").forEach((el) => el.contains(event.target) || el.removeAttribute("open")));
 const refText = (ref) => `Commit ${ref.sha}${ref.ref ? ` on ${ref.ref}` : ""}`;
 
 // Storybook titles are "Group/Component"; page items are shown whole.
@@ -192,6 +215,7 @@ function render() {
             $("div", {},
             $("div", { className: "title" }, $("b", { textContent: component(story) }), story.name ? `:${story.name}` : ""),
             $("div", { className: "meta" },
+                switcher(),
                 $("span", {}, $("i", { className: "dot" }), refText(data.head)),
                 // Without configured modes there is one unnamed mode, so the chip would only say "default".
                 data.showModes ? $("span", { className: "chip", ariaLabel: `Mode: ${snapshot.mode}`, title: snapshot.mode }, html(icons.mode),
@@ -241,7 +265,7 @@ function build() {
     const stat = (value, label, className = "") => $("div", { className: "stat" }, $("b", { className, textContent: value }), $("span", { textContent: label }));
     const head = $("div", { className: "build-head" },
         $("i", { className: `status-dot${entries.length ? "" : " pass"}` }),
-        $("div", {}, $("h1", { textContent: "Visual changes" }), $("p", { textContent: `${data.name ? `${data.name} · ` : ""}${refText(data.head)}` })),
+        $("div", {}, $("h1", { textContent: "Visual changes" }), data.projects?.length ? $("p", {}, switcher(), ` ${refText(data.head)}`) : $("p", { textContent: `${data.name ? `${data.name} · ` : ""}${refText(data.head)}` })),
         $("div", { className: "totals" },
             // Plain pages have no components, so the two totals would repeat each other.
             data.labels.group === data.labels.item ? "" : $("div", {}, $("b", { textContent: data.groups }), $("span", { textContent: data.labels.group })),

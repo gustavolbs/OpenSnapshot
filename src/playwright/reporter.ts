@@ -80,6 +80,8 @@ export default class ReviewReporter implements Reporter {
             showModes: manifest.showModes,
             base: manifest.base,
             head: manifest.head,
+            projects: manifest.projects,
+            home: manifest.home,
             labels: manifest.sourceType === "storybook" ? { group: "Components", item: "Stories" } : { group: "Pages", item: "Pages" },
             groups: this.groups.size,
             unchanged: this.unchanged,

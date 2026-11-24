@@ -190,6 +190,29 @@ export default defineConfig({ name: "web", /* ... */ });
 
 In a monorepo, add one job (or a matrix entry) per app with its own `working-directory` and `artifact-name`. Each project name gets its own PR comment, updated in place, so several apps in one pull request do not overwrite each other.
 
+### Project selector and the page that lists all projects
+
+List your projects in each config, as `{ name: review URL }`. Use the stable address of each project's Vercel deployment (or any static host that serves the review folder).
+
+```ts
+export default defineConfig({
+  name: "web",
+  projects: { web: "https://web-opensnapshot.vercel.app", docs: "https://docs-opensnapshot.vercel.app" },
+  projectsHome: "https://opensnapshot.acme.dev", // optional, adds "All projects"
+  /* ... */
+});
+```
+
+The review page then shows a selector next to the project name. It lists the projects, marks the current one and links to each URL. The links are fixed addresses, so the selector shows no live status.
+
+![The project selector open on a review page](docs/img/project-selector.png)
+
+`opensnapshot index` builds the page behind "All projects". It reads `<url>/summary.json` of every project (the review folder includes that file, with the counts, the head ref and the time of the run) and writes `<outDir>/projects/index.html`: one card per project with "N changes", "No changes", "N errors" or "No data". Deploy that folder to a project of its own and run the command again whenever a project publishes a new review, for example on every merge to the main branch. The addresses must serve the review of the run you want to show, so point them at each project's main-branch deployment.
+
+![The page that lists all projects](docs/img/projects-index.png)
+
+This part has been exercised with local servers only, not with a real Vercel setup.
+
 ### Hosting the review page (optional)
 
 The review folder is static, so any host works. For a team, a good fit is **one Vercel project per app** (for example `web-opensnapshot` and `docs-opensnapshot`): every run becomes one immutable deployment with its own URL, old reviews keep working, and access control is set per project. A single shared project would need a store and a viewer app, because Vercel replaces a whole deployment each time. Suggested step after `opensnapshot run`; this recipe has not been tested yet:
@@ -210,6 +233,7 @@ Keep Vercel's deployment protection on if the screenshots are private.
 ```
 opensnapshot run [--base <ref>] [--config <file>] [--out <dir>] [--fail-on-changes]
 opensnapshot review [--out <dir>] [--port <n>] [--config <file>]
+opensnapshot index [--config <file>] [--out <dir>]
 opensnapshot install [--with-deps] [browser]
 opensnapshot help
 ```
@@ -223,6 +247,7 @@ opensnapshot help
 | `--fail-on-changes` | Exit 1 when something changed or is new. |
 | `review` | Serves `<out>/review` on `http://localhost:<port>` (default: the config's `port`, 6106) until you stop it. |
 | `--port`, `-p` | Port for `review`. |
+| `index` | Writes the page that lists the config's `projects`, with the latest `summary.json` of each, to `<outDir>/projects` (or `--out`). A project whose summary cannot be read shows "No data". |
 | `install` | Installs the Playwright browser that matches the bundled Playwright. Extra arguments go to `playwright install`; the default is `chromium`. |
 
 Run all commands from the folder that holds the config.
@@ -234,6 +259,8 @@ Run all commands from the folder that holds the config.
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `name` | none | Label for this project on the review page and in the summary. |
+| `projects` | none | `{ name: review URL }` of your projects. Adds the project selector to the review page and feeds `opensnapshot index`. |
+| `projectsHome` | none | URL of the page `index` built. Adds "All projects" to the selector. |
 | `build.output` | required | Folder to serve, relative to the config. |
 | `build.command` | none | Builds the site. Runs for the head in the project and for the base in the temporary checkout. Leave it out to serve `output` as it is. |
 | `install` | from the lockfile | Install command for the base checkout: `pnpm install --frozen-lockfile`, `yarn install --immutable`, `npm ci` or `bun install --frozen-lockfile`. `false` skips it. |
