@@ -77,6 +77,8 @@ export default class ReviewReporter implements Reporter {
 
     onEnd() {
         const data = {
+            name: manifest.name,
+            showModes: manifest.showModes,
             base: manifest.base,
             head: manifest.head,
             labels: manifest.sourceType === "storybook" ? { group: "Components", item: "Stories" } : { group: "Pages", item: "Pages" },
@@ -98,7 +100,7 @@ export default class ReviewReporter implements Reporter {
             errors: this.errors,
         };
         writeFileSync(path.join(out, "summary.json"), JSON.stringify(summary, null, 2));
-        writeFileSync(path.join(out, "summary.md"), summaryMarkdown(summary, { base: manifest.base.ref || manifest.base.sha, head: manifest.head.ref || manifest.head.sha }));
+        writeFileSync(path.join(out, "summary.md"), summaryMarkdown(summary, { name: manifest.name, base: manifest.base.ref || manifest.base.sha, head: manifest.head.ref || manifest.head.sha }));
     }
 
     // The CLI prints the outcome. Claiming stdio stops Playwright from adding its noisy default reporter.

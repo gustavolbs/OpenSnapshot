@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { detectInstall } from "../../src/git.js";
 import { resolveFile } from "../../src/serve.js";
-import { marker, summaryMarkdown } from "../../src/summary.js";
+import { markerFor, summaryMarkdown } from "../../src/summary.js";
 
 const root = mkdtempSync(path.join(tmpdir(), "opensnapshot-serve-"));
 mkdirSync(path.join(root, "docs"));
@@ -40,9 +40,14 @@ describe("detectInstall", () => {
 
 describe("summaryMarkdown", () => {
     const refs = { base: "main", head: "feature" };
+    it("names the project", () => {
+        expect(summaryMarkdown({ changed: 0, new: 0, unchanged: 1, skipped: 0, errors: [] }, { ...refs, name: "web" })).toContain("### OpenSnapshot: web");
+        // A comment marker must never contain "--" or ">".
+        expect(markerFor("my app -->")).toBe("<!-- opensnapshot:my_app_ -->");
+    });
     it("says when nothing changed", () => {
         const text = summaryMarkdown({ changed: 0, new: 0, unchanged: 3, skipped: 0, errors: [] }, refs);
-        expect(text).toContain(marker);
+        expect(text.split("\n")[0]).toBe("<!-- opensnapshot -->");
         expect(text).toContain("No visual changes. 3 items match");
     });
     it("tabulates changes and lists errors", () => {

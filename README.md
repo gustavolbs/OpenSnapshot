@@ -1,21 +1,68 @@
 # OpenSnapshot
 
-Visual diff for Storybook and static sites. It builds your base branch and your change, screenshots both with Playwright, and writes a static review page that shows **only what changed**: expected, actual and a diff overlay, side by side.
+Visual diff for Storybook and static sites. OpenSnapshot builds your base branch and your change, screenshots both with Playwright, and writes a static review page that shows **only what changed**: baseline, latest and a diff overlay, side by side.
 
-No account, no hosted service, no baseline files in git. The baseline is rebuilt from the merge base on every run, on the same machine that renders the change, so font and engine differences cancel out.
+- **No account, no service, no baseline files in git.** The baseline is rebuilt from the merge base on every run, on the same machine that renders the change. Fonts and browser versions cancel out.
+- **Runs the same way everywhere.** `opensnapshot run` locally, or the bundled GitHub Action in CI.
+- **Modes are optional.** Use many themes and viewports, or none at all and get a plain "before versus after" diff.
+- **The output is a folder.** Zip it, upload it as a CI artifact, or deploy it to any static host.
+
+## Why
+
+A pull request changes CSS, a component or a design token, and nobody sees what moved on the pages that share it. Hosted visual-testing tools solve that, but they add an account, a baseline to approve and a per-snapshot bill. OpenSnapshot keeps the part that matters in review (what changed, shown next to what it was) and drops the rest.
+
+## Demo
+
+Everything below comes from the fixture in [`examples/static-site`](examples/static-site): a two-page site where one commit changes the home page's button label and card text. Regenerate the images with `pnpm docs:images`.
+
+### Overview: only what changed
+
+The About page did not change, so it is not listed. The home page is listed once per mode (light, dark and mobile).
+
+![Review overview with three modes](docs/img/overview.png)
+
+### One changed item: baseline, latest and diff
+
+Left is the merge base, right is your change. The green overlay marks every pixel that differs.
+
+![Baseline and latest side by side with the diff overlay](docs/img/item-diff.png)
+
+Focus mode dims everything except the areas that changed. Strobe mode flips the overlay so small shifts catch the eye. `1 up` shows one image at a time, and the arrow keys or `j`/`k` move between changes.
+
+![Focus mode highlights the changed areas](docs/img/item-focus.png)
+
+### Several modes: themes and viewports
+
+Each mode is one more screenshot of the same page. This one is the dark theme (`colorScheme: "dark"`); the chip next to the commit names the mode.
+
+![The same change in the dark theme](docs/img/multi-theme-dark.png)
+
+A phone-width mode catches layout problems the desktop view hides.
+
+![The same change at 390 px wide](docs/img/multi-mode-mobile.png)
+
+### No modes: a plain baseline versus change diff
+
+Leave `modes` out of the config and every page is shot once, at 1200 by 900 with no theme. The review page then shows no mode column and no mode chip.
+
+![Overview without modes](docs/img/single-mode-overview.png)
+
+![One changed page without modes](docs/img/single-mode-item.png)
 
 ## Quick start (local)
 
-You need Node 20.11 or later, git, and the history of the branch you compare with.
+You need Node 20.11 or later, git, and the history of the branch you compare with (`origin/main` by default).
+
+The package is not on npm yet. Until it is, clone this repository, run `pnpm install && pnpm build`, and call `node /path/to/OpenSnapshot/dist/cli.js` from your project. A config that imports `opensnapshot` still resolves. Once published:
 
 ```bash
-pnpm add -D opensnapshot        # or run it without installing: pnpm dlx opensnapshot run
-pnpm exec opensnapshot install  # downloads Chromium once
+pnpm add -D opensnapshot             # or run it without installing: pnpm dlx opensnapshot run
+pnpm exec opensnapshot install       # downloads Chromium once (add --with-deps on a fresh Linux machine)
 ```
 
-The package is not on npm yet. Until it is, clone this repository, run `pnpm install && pnpm build`, and call `node /path/to/OpenSnapshot/dist/cli.js` from your project; a config that imports `opensnapshot` still resolves.
+**1. Add `opensnapshot.config.ts`** next to your `package.json`.
 
-Add `opensnapshot.config.ts` next to your `package.json`. For Storybook:
+Storybook:
 
 ```ts
 import { defineConfig } from "opensnapshot";
@@ -23,6 +70,7 @@ import { defineConfig } from "opensnapshot";
 export default defineConfig({
     build: { command: "pnpm storybook build -o storybook-static", output: "storybook-static" },
     source: { type: "storybook" },
+    // Optional. Leave `modes` out to shoot each story once.
     modes: {
         light: { viewport: 1200 },
         dark: { viewport: 1200, globals: { theme: "dark" } },
@@ -31,134 +79,248 @@ export default defineConfig({
 });
 ```
 
-For any static site (a built folder, or plain HTML):
+Any static site (a built folder, or plain HTML):
 
 ```ts
 export default defineConfig({
-    build: { command: "pnpm build", output: "dist" }, // omit `command` to serve `output` as it is
+    build: { command: "pnpm build", output: "dist" }, // leave `command` out to serve `output` as it is
     source: { type: "urls", pages: ["/", "/pricing/", { name: "docs", path: "/docs/intro.html" }] },
 });
 ```
 
-Then run it from a branch with your change:
+**2. Ignore the work folder:** add `.opensnapshot` to `.gitignore`.
+
+**3. Run it** on a branch with a change:
 
 ```bash
-pnpm exec opensnapshot run                 # compares with origin/main
+pnpm exec opensnapshot run                      # compares with origin/main
 pnpm exec opensnapshot run --base origin/develop
-pnpm exec opensnapshot review              # serves .opensnapshot/review on http://localhost:6106
+pnpm exec opensnapshot review                   # serves the review page on http://localhost:6106
 ```
 
-Open `.opensnapshot/review/index.html`. Add `.opensnapshot` to your `.gitignore`. Uncommitted changes in your working tree are part of the head build, so you can check an edit before you commit it.
+Open `.opensnapshot/review/index.html` (it also works from `file://`). Uncommitted edits in your working tree are part of the head build, so you can check a change before you commit it. The first run on a branch with no difference reports "No visual changes", which is the expected result.
 
-## What `run` does
+## How the base build and the head build work
 
-1. Finds the merge base of `--base` (default `origin/main`) and `HEAD`.
-2. Builds the current code (`build.command`), and lists the stories (from `index.json`) or the pages you configured.
-3. Checks out the merge base into `.opensnapshot/base-src` (a temporary git worktree), installs and builds it there, copies the output, and removes the worktree.
-4. **Base pass:** serves the base build and records a Playwright baseline with `toHaveScreenshot` for every item and mode.
-5. **Head pass:** serves the current build and compares against that baseline.
-6. Writes `.opensnapshot/review/index.html` with the changed items only, plus `summary.json` and `summary.md`.
+`opensnapshot run` is one pipeline:
 
-An item that does not exist in the base (a new story or page) is listed as **new**. An item that cannot render is listed as an **error**, and the command exits with code 1.
+1. **Resolve refs.** It finds the merge base of `--base` and `HEAD`. In a pull request this is the tip of the target branch.
+2. **Head build.** It runs `build.command` in your project and serves `build.output`. It lists the items: for Storybook every story in `index.json` (docs entries are skipped), for URLs the pages you configured.
+3. **Base build.** It adds a temporary git worktree of the merge base in `.opensnapshot/base-src`, runs the install command there (guessed from the lockfile, or `install` in the config), runs `build.command`, copies `build.output` to `.opensnapshot/base`, and removes the worktree. In a monorepo the commands run in the same sub-folder as your project.
+4. **Base pass.** It serves the base build on `127.0.0.1` and takes a Playwright `toHaveScreenshot` shot of every item and mode, recording them as the baseline. An item that cannot render in the base (a story or page the change adds, a 404) simply has no baseline.
+5. **Head pass.** It serves the head build and compares each shot with the baseline. An item with no baseline is **new**. A shot that differs is **changed**. A shot that matches counts as **unchanged**, and leaves no image behind. A page that fails to load or a story that throws is an **error**.
+6. **Report.** It writes `.opensnapshot/review/index.html` with only the changed and new items, plus `summary.json` and `summary.md`.
 
-## CI (GitHub Actions)
+The config file comes from your head checkout and applies to both passes, so a change that adds a page and lists it in the config shows that page as new.
 
-The repository ships a composite action. Copy [`examples/github-workflow.yml`](examples/github-workflow.yml) to `.github/workflows/visual-diff.yml`:
+Output layout:
+
+```
+.opensnapshot/
+  review/index.html      the page; open it, zip it or deploy it as it is
+  review/img/<item>/     expected, actual, diff and overlay images for changed items
+  summary.json           { changed, new, unchanged, skipped, errors }
+  summary.md             the text used for the job summary and the PR comment
+  base/ baseline/ test-results/ manifest.json   working files
+```
+
+## CI with GitHub Actions
+
+The repository ships a composite action ([`action.yml`](action.yml)). Set it up in four steps.
+
+**1. Create the workflow.** Copy [`examples/github-workflow.yml`](examples/github-workflow.yml) to `.github/workflows/visual-diff.yml`:
 
 ```yaml
-- uses: actions/checkout@v7
-  with:
-    fetch-depth: 0 # the merge base needs the history
-- uses: pnpm/action-setup@v6
-- uses: actions/setup-node@v7
-  with: { node-version: 22, cache: pnpm }
-- run: pnpm install --frozen-lockfile
-- uses: gustavolbs/OpenSnapshot@main # pin a commit SHA in real use
-  with:
-    comment: true # optional, off by default
+name: Visual diff
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write # only needed for comment: true
+
+jobs:
+  visual:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the merge base needs the history
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - uses: gustavolbs/OpenSnapshot@main # pin a commit SHA in real use
+        with:
+          working-directory: . # the folder with opensnapshot.config.ts
 ```
 
-The action fetches missing history, caches the Playwright browser per Playwright version, runs `opensnapshot run --base origin/<PR base branch>`, writes the summary to the job summary, and uploads `review/` as an artifact (14 days). With `comment: true` it also creates or updates one comment on the pull request with the counts and a link to the artifact; give the job `pull-requests: write` for that. Download and unzip the artifact, then open `index.html`.
+**2. Keep full history.** `fetch-depth: 0` lets the action find the merge base. If the clone is shallow, the action tries to unshallow it and fetch the base branch, and prints a warning if it cannot.
+
+**3. Read the result.** The action writes the counts to the job summary and uploads `.opensnapshot/review` as an artifact named `opensnapshot-review` (14 days). Download and unzip it, then open `index.html`. The artifact is uploaded even when the run fails, so you can see an error page too.
+
+**4. Optionally comment on the pull request.** Set `comment: true` and give the job `pull-requests: write`. The action creates one comment with the counts and a link to the artifact, and updates it on every push instead of adding a new one. The step is off by default and never fails the job (forks get a read-only token).
+
+What the action does for you: installs its own dependencies, caches the Playwright browser per Playwright version, installs Chromium with system dependencies, runs `opensnapshot run --base origin/<PR base branch>` in the working directory, then uploads, summarizes and comments.
 
 | Input | Default | Meaning |
 | --- | --- | --- |
 | `working-directory` | `.` | Folder with `opensnapshot.config.ts`. |
-| `base-ref` | `origin/<PR base>` or `origin/main` | Ref to compare with. |
+| `base-ref` | `origin/<PR base>`, else `origin/main` | Ref to compare with. |
 | `config` | | Config path, if it has another name. |
-| `fail-on-changes` | `false` | Fail the step when something changed. |
+| `fail-on-changes` | `false` | Fail the step when something changed. Errors always fail it. |
 | `comment` | `false` | Post or update the pull request comment. |
-| `artifact-name` / `retention-days` | `opensnapshot-review` / `14` | Artifact settings. |
+| `github-token` | `github.token` | Token used for the comment. |
+| `artifact-name` | `opensnapshot-review` | Artifact name. Use one per project when a repository has several. |
+| `retention-days` | `14` | Days to keep the artifact. |
 
-Outputs: `changed`, `new`, `errors`, `artifact-url`. Any other CI works too: run `pnpm exec opensnapshot install --with-deps` and `pnpm exec opensnapshot run`, keep `.opensnapshot/review` as a build artifact, and make sure the clone has full history.
+Outputs: `changed`, `new`, `errors`, `artifact-url`.
+
+Other CI systems work too: install Node and your dependencies, run `pnpm exec opensnapshot install --with-deps` and `pnpm exec opensnapshot run`, keep `.opensnapshot/review` as a build artifact, and make sure the clone has full history.
+
+The action is built from this repository on every run. Because the repository is private, GitHub only lets other repositories use it after you open Settings, Actions, General, Access, and allow access from repositories you own.
+
+### Several projects in one company
+
+Give each project its own config with a `name`. The name shows on the review page and in the PR comment, so reviews from different apps do not look alike.
+
+```ts
+export default defineConfig({ name: "web", /* ... */ });
+```
+
+In a monorepo, add one job (or a matrix entry) per app with its own `working-directory` and `artifact-name`. Each project name gets its own PR comment, updated in place, so several apps in one pull request do not overwrite each other.
+
+### Hosting the review page (optional)
+
+The review folder is static, so any host works. For a team, a good fit is **one Vercel project per app** (for example `web-opensnapshot` and `docs-opensnapshot`): every run becomes one immutable deployment with its own URL, old reviews keep working, and access control is set per project. A single shared project would need a store and a viewer app, because Vercel replaces a whole deployment each time. Suggested step after `opensnapshot run`; this recipe has not been tested yet:
+
+```yaml
+- name: Publish the review page
+  run: npx vercel deploy .opensnapshot/review --token "$VERCEL_TOKEN" > review-url.txt
+  env:
+    VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+    VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }} # the web-opensnapshot project
+```
+
+Keep Vercel's deployment protection on if the screenshots are private.
+
+## CLI reference
+
+```
+opensnapshot run [--base <ref>] [--config <file>] [--out <dir>] [--fail-on-changes]
+opensnapshot review [--out <dir>] [--port <n>] [--config <file>]
+opensnapshot install [--with-deps] [browser]
+opensnapshot help
+```
+
+| Command or flag | What it does |
+| --- | --- |
+| `run` | Runs the pipeline above. Exit code 0 when it finishes with no errors, 1 on errors (or on changes with `--fail-on-changes`), 2 on an unknown command. |
+| `--base`, `-b` | Ref to compare with. Overrides `baseRef`. |
+| `--config`, `-c` | Config file. Default: `opensnapshot.config.{ts,mts,js,mjs}` in the current folder. |
+| `--out`, `-o` | Work folder. Overrides `outDir`. `run` deletes it first. |
+| `--fail-on-changes` | Exit 1 when something changed or is new. |
+| `review` | Serves `<out>/review` on `http://localhost:<port>` (default: the config's `port`, 6106) until you stop it. |
+| `--port`, `-p` | Port for `review`. |
+| `install` | Installs the Playwright browser that matches the bundled Playwright. Extra arguments go to `playwright install`; the default is `chromium`. |
+
+Run all commands from the folder that holds the config.
 
 ## Config reference
 
-`opensnapshot.config.ts` (also `.mts`, `.js`, `.mjs`); `defineConfig` is optional and only adds types.
+`opensnapshot.config.ts` (also `.mts`, `.js`, `.mjs`). `defineConfig` only adds types, and a plain `export default { ... }` works.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
+| `name` | none | Label for this project on the review page and in the summary. |
 | `build.output` | required | Folder to serve, relative to the config. |
-| `build.command` | none | Builds the site. Runs for the head in the project and for the base in the temporary checkout. |
-| `install` | from the lockfile | Install command for the base checkout (`pnpm install --frozen-lockfile`, `yarn install --immutable`, `npm ci`). `false` skips it. |
+| `build.command` | none | Builds the site. Runs for the head in the project and for the base in the temporary checkout. Leave it out to serve `output` as it is. |
+| `install` | from the lockfile | Install command for the base checkout: `pnpm install --frozen-lockfile`, `yarn install --immutable`, `npm ci` or `bun install --frozen-lockfile`. `false` skips it. |
 | `source` | required | `{ type: "storybook", include?, exclude? }` or `{ type: "urls", pages }`. |
-| `modes` | `{ default: { viewport: 1200 } }` | Named renderings. Each item is shot once per mode. |
+| `modes` | none (one default shot) | Named renderings; each item is shot once per mode. **Optional.** See below. |
 | `baseRef` | `origin/main` | Ref to compare with. `--base` overrides it. |
 | `deviceScaleFactor` | `2` | Screenshot scale. |
 | `threshold` | `0.2` | Per-pixel color distance (0 to 1), as in Playwright. |
 | `maxDiffPixelRatio` | `0` | Share of pixels allowed to differ (0 to 1). |
-| `outDir` | `.opensnapshot` | Work folder. `run` deletes it first, so it must be a subfolder of the project. |
+| `outDir` | `.opensnapshot` | Work folder. `run` deletes it first, so it must be a sub-folder of the project. |
 | `port` | `6106` | Local port of the static server. |
 | `failOnChanges` | `false` | Exit 1 when something changed. Errors always exit 1. |
 
-A mode is `{ viewport?: number | { width, height? }, colorScheme?: "light" | "dark", globals?: Record<string, string> }`. `globals` goes to Storybook as `&globals=key:value;key:value`.
+**Modes.** A mode is `{ viewport?, colorScheme?, globals? }`:
 
-`pages` entries are paths served from `build.output`, or `{ name, path }`. A page that answers 404 in the base build counts as new.
+- `viewport`: a width in CSS pixels, or `{ width, height? }`. The default is 1200 by 900. Shots are always full page.
+- `colorScheme`: `"light"` or `"dark"`, sent to the browser as `prefers-color-scheme`. Good for sites with a dark theme in CSS.
+- `globals`: Storybook only, sent as `&globals=key:value;key:value`. Use it for a theme switcher, for example `{ theme: "dark" }`.
 
-**Storybook:** stories come from `index.json` (Storybook 7 and later). `include` and `exclude` are regular expressions tested against story ids. A story can opt out or wait before the shot:
+With no `modes` (or an empty object) OpenSnapshot takes one default mode: 1200 by 900, light, no globals. The review page then shows no mode chip and no mode rows. Name even a single mode and the page shows it.
+
+**Pages** (`source.type: "urls"`): paths served from `build.output`, or `{ name, path }` to label the page. A page that answers 404 in the base build counts as new; a 404 in the head is an error.
+
+**Storybook** (`source.type: "storybook"`): stories come from `index.json` (Storybook 7 and later). `include` and `exclude` are regular expressions tested against story ids. A story can opt out, or wait before the shot:
 
 ```ts
-export const Animated = { parameters: { opensnapshot: { disable: false, delay: 300 } } };
-// parameters: { opensnapshot: { disable: true } } skips the story.
+export const Animated = { parameters: { opensnapshot: { delay: 300 } } };
+export const Random = { parameters: { opensnapshot: { disable: true } } };
 ```
 
-**Deterministic rendering:** fixed viewport per mode, CSS animations and transitions disabled, caret hidden, fonts awaited (`document.fonts.ready`), `en-US` locale, UTC time zone, service workers blocked, and Chromium flags for stable font rendering (`--font-render-hinting=none`, `--disable-lcd-text`, `--force-color-profile=srgb`). Both passes run on the same machine, so the remaining noise is yours: random data, clocks and remote images. Mock them, or use a story `delay`.
+**Deterministic rendering.** Per mode: fixed viewport and scale. Always: CSS animations and transitions disabled, caret hidden, fonts awaited (`document.fonts.ready`), `en-US` locale, UTC time zone, service workers blocked, and Chromium flags for stable text (`--font-render-hinting=none`, `--disable-lcd-text`, `--force-color-profile=srgb`, `--hide-scrollbars`). Both passes run on the same machine, so the remaining noise is yours: random data, clocks, remote images and JavaScript animations. Mock them or use a story `delay`.
 
 ## How it differs from Chromatic
 
 | | OpenSnapshot | Chromatic |
 | --- | --- | --- |
 | Where it runs | Your machine or your CI runner | Their cloud |
-| Baselines | Rebuilt from the merge base each run | Stored and accepted per branch |
-| Review page | Static folder, artifact per run | Hosted app with history |
+| Baselines | Rebuilt from the merge base on each run | Stored and accepted per branch |
+| Review page | Static folder; one artifact per run | Hosted app with history and collaboration |
 | Approval workflow | None: you read the page | Accept or deny, with status checks |
-| Cross-browser | Chromium only | Several browsers |
+| Browsers | Chromium | Several |
 | Cost | Your CI minutes | Per-snapshot plans |
-| Change detection | Screenshots every item you list | TurboSnap skips unaffected stories |
+| Unaffected stories | All listed items are shot every run | TurboSnap skips them |
 
-OpenSnapshot is for teams that want a visual diff on every pull request without a service. It is not a review workflow: it does not block merges and has no approval state.
+OpenSnapshot is for teams that want a visual diff on every pull request without a service. It is not a review workflow: it does not block merges and has no approval state. The review page layout is inspired by hosted visual-review tools.
 
 ## Limits
 
-- Chromium only, one engine, one operating system per run. Do not mix local and CI baselines; there are none to mix.
-- Static output only. A site that needs a running server (SSR without export) must be exported first. Pages are served from the built folder at `127.0.0.1`.
-- Every listed item is shot twice on every run. There is **no affected-story tracing**: tracing which stories a change can reach depends on bundler statistics (webpack stats and a dependency tracer) and does not generalize cleanly across Vite, webpack and plain sites. Use `include` and `exclude`, or a smaller `modes` list, to keep runs short.
-- The base build runs a full install and build in a checkout of the merge base. Large monorepos pay for that on every run.
-- The Storybook path reads `window.__STORYBOOK_PREVIEW__`, an internal Storybook API. It has been exercised against Storybook 10 (`@storybook/html-vite`) and a stand-in preview, not against every Storybook version or framework.
-- The composite action runs on Linux runners (the browser cache path is Linux's).
-- Review page images are full-size PNGs at the device scale factor; many items and modes make a large artifact.
+- Chromium only, on one operating system per run. There are no stored baselines, so there is nothing to mix between local and CI.
+- Static output only. A site that needs a running server must be exported first. Pages are served from the built folder on `127.0.0.1`.
+- Every listed item is shot twice on every run. There is **no affected-story tracing**: working out which stories a change can reach depends on bundler statistics and a dependency tracer, which does not generalize across Vite, webpack and plain sites. Use `include`, `exclude` and a short `modes` list to keep runs fast.
+- The base build runs a full install and build in a checkout of the merge base on every run. Large monorepos pay for that.
+- The Storybook path reads `window.__STORYBOOK_PREVIEW__`, an internal Storybook API. It has been exercised against Storybook 10 (`@storybook/html-vite`) and a stand-in preview, not against every version or framework.
+- The composite action targets Linux runners, because the browser cache path is Linux's.
+- The review page holds full-size PNGs at the device scale factor. Many items and modes make a large artifact.
+- No comparison of the page between runs: each run answers "what changed against the merge base" and nothing else.
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| `Cannot find a merge base between origin/main and HEAD` | The clone lacks the base branch or history. Run `git fetch origin main`, or in CI use `fetch-depth: 0`. For another base pass `--base <ref>`. |
+| `Executable doesn't exist ... run playwright install` | Run `opensnapshot install`. On a fresh Linux machine or CI add `--with-deps`. |
+| `listen EADDRINUSE 127.0.0.1:6106` | Something uses the port. Set `port` in the config or stop the other process. |
+| `No index.json in ...` | The Storybook build did not write `index.json`, or `build.output` is wrong. Storybook 7 and later write it. |
+| `Base build produced no <output> folder` | The build in the merge base failed to create `build.output`. Run the build command by hand at the merge base. |
+| `Ignored build scripts` or an install error in the base checkout | pnpm blocked a build script in the merge base. Approve it in the repository's pnpm settings at the base commit, or set `install` to your own command. |
+| `Command failed ... build` | The build fails at the merge base or at your change. The command is printed; run it yourself in the same folder. |
+| Everything shows as changed | Rendering is not stable between passes: random data, a clock, a remote image or a JavaScript animation. Mock it, or add a story `delay`. Raising `threshold` helps with small anti-aliasing noise. |
+| A page shows as an error with `answered 404` | The page is listed in the config but missing from the head build. Fix the path or the build. |
+| The comment is not posted | The job needs `pull-requests: write`, and forks get a read-only token. The step never fails the job; read the summary in the job page instead. |
+| Another repository cannot use the action | The repository is private. Allow access in Settings, Actions, General, Access, or make it public. |
+| The review page shows broken images | Open it from the unzipped `review` folder, not by itself. The images are in `img/` next to `index.html`. |
 
 ## Development
 
 ```bash
 pnpm install
-pnpm test        # unit tests (vitest)
-pnpm test:e2e    # builds, then runs the CLI on fixtures in temporary git repos (needs Chromium)
+pnpm test          # unit tests (vitest)
+pnpm test:e2e      # builds, then runs the CLI on fixtures in temporary git repos (needs Chromium)
 pnpm typecheck
+pnpm docs:images   # regenerates docs/img from examples/static-site
 ```
 
-`pnpm test:e2e` proves the main promise: on a two-page site, changing one element makes only that page show up in the review page; a new page shows as new; a change that does not render shows nothing.
+The end-to-end test covers the main promise: on a two-page site, changing one element makes only that page show up in the review page; a new page shows as new; a change that does not render shows nothing. It runs once with several modes and once with none, and checks the mode column and chip in the page itself.
 
-The review page layout is inspired by hosted visual-review tools. Its icons come from `@storybook/icons` (MIT).
+The review page icons come from `@storybook/icons` (MIT).
 
 ## License
 

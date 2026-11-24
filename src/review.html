@@ -123,6 +123,8 @@ tr.group td:first-child { padding-left: 10px; }
 .group-name .story { color: #37d5d3; }
 .group-name b { font-weight: 700; }
 tr.snapshot { cursor: pointer; }
+tr.snapshot.flat td:first-child { padding-left: 30px; }
+tr.snapshot.flat a svg { color: #37d5d3; }
 tr.snapshot:hover { background: rgb(38 74 115 / .03); }
 tr.snapshot a { display: inline-flex; align-items: center; gap: 8px; color: inherit; text-decoration: none; }
 tr.snapshot a svg { color: #ffae00; }
@@ -136,6 +138,7 @@ tr.snapshot a svg { color: #ffae00; }
 <div id="app"></div>
 <script>
 const data = /*DATA*/null;
+if (data.name) document.title = `${data.name}: visual changes`;
 // Icons from @storybook/icons (MIT).
 const icon = (d) => `<svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true"><path fill-rule="evenodd" d="${d}"/></svg>`;
 const icons = {
@@ -187,11 +190,12 @@ function render() {
         $("div", {},
             $("a", { className: "back", href: "#", ariaLabel: "Back to all changes" }, html(icons.back), html(icons.list)),
             $("div", {},
-            $("div", { className: "title" }, $("b", { textContent: component(story) }), `:${story.name || story.id}`),
+            $("div", { className: "title" }, $("b", { textContent: component(story) }), story.name ? `:${story.name}` : ""),
             $("div", { className: "meta" },
                 $("span", {}, $("i", { className: "dot" }), refText(data.head)),
-                $("span", { className: "chip", ariaLabel: `Mode: ${snapshot.mode}`, title: snapshot.mode }, html(icons.mode),
-                    $("span", { textContent: snapshot.mode }))))),
+                // Without configured modes there is one unnamed mode, so the chip would only say "default".
+                data.showModes ? $("span", { className: "chip", ariaLabel: `Mode: ${snapshot.mode}`, title: snapshot.mode }, html(icons.mode),
+                    $("span", { textContent: snapshot.mode })) : ""))),
         isNew ? $("div") : $("div", { className: "segmented" },
             button("1 up", "1 up [1]", state.up === 1, () => set({ up: 1 }), "1 up"),
             button("2 up", "2 up [2]", state.up === 2, () => set({ up: 2 }), "2 up")),
@@ -237,9 +241,10 @@ function build() {
     const stat = (value, label, className = "") => $("div", { className: "stat" }, $("b", { className, textContent: value }), $("span", { textContent: label }));
     const head = $("div", { className: "build-head" },
         $("i", { className: `status-dot${entries.length ? "" : " pass"}` }),
-        $("div", {}, $("h1", { textContent: "Visual changes" }), $("p", { textContent: refText(data.head) })),
+        $("div", {}, $("h1", { textContent: "Visual changes" }), $("p", { textContent: `${data.name ? `${data.name} · ` : ""}${refText(data.head)}` })),
         $("div", { className: "totals" },
-            $("div", {}, $("b", { textContent: data.groups }), $("span", { textContent: data.labels.group })),
+            // Plain pages have no components, so the two totals would repeat each other.
+            data.labels.group === data.labels.item ? "" : $("div", {}, $("b", { textContent: data.groups }), $("span", { textContent: data.labels.group })),
             $("div", {}, $("b", { textContent: checked + data.skipped }), $("span", { textContent: data.labels.item }))));
     const info = $("div", { className: "card stats" },
         $("div", {}, stat(checked + data.skipped, `Checked ${data.labels.item.toLowerCase()}`), stat(data.skipped, "Skipped")),
@@ -267,6 +272,17 @@ function table(title, list) {
     const body = $("tbody");
     const groups = Map.groupBy(list, (entry) => entry.story);
     for (const [story, items] of groups) {
+        // No modes: one row per item, no group header and no mode column.
+        if (!data.showModes) {
+            for (const entry of items) {
+                const href = `#${entries.indexOf(entry) + 1}`;
+                body.append($("tr", { className: "snapshot flat", onclick: () => { location.hash = href; } },
+                    $("td", {}, $("a", { href }, html(icons.story), $("b", { textContent: component(story) }), story.name ? `:${story.name}` : "")),
+                    $("td", {}, $("span", { className: "badge", textContent: "Unreviewed" })),
+                    $("td", { textContent: "Visual" })));
+            }
+            continue;
+        }
         const open = !state.collapsed.has(story.id);
         const toggle = $("button", { ariaLabel: `${open ? "Collapse" : "Expand"} ${story.title}`, onclick: () => {
             state.collapsed[open ? "add" : "delete"](story.id);
@@ -275,7 +291,7 @@ function table(title, list) {
         toggle.setAttribute("aria-expanded", open);
         body.append($("tr", { className: "group" },
             $("td", {}, $("div", { className: "group-name" }, toggle, $("span", { className: "story" }, html(icons.story)),
-                $("span", {}, $("b", { textContent: component(story) }), `:${story.name || story.id} (${items.length})`))),
+                $("span", {}, $("b", { textContent: component(story) }), `${story.name ? `:${story.name}` : ""} (${items.length})`))),
             $("td", {}, $("div", { className: "mini" }, $("i"))), $("td")));
         if (!open) continue;
         for (const entry of items) {

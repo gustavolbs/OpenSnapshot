@@ -1,11 +1,12 @@
 import type { Summary } from "./manifest.js";
 
-export const marker = "<!-- opensnapshot -->";
+/** Hidden first line of the comment. The Action finds its own comment by it, so each project name gets one comment. */
+export const markerFor = (name?: string) => `<!-- opensnapshot${name ? `:${name.replace(/[^\w.]+/g, "_")}` : ""} -->`;
 
 /** Markdown for the job summary and the PR comment. */
-export function summaryMarkdown(summary: Summary, refs: { base: string; head: string }): string {
+export function summaryMarkdown(summary: Summary, refs: { base: string; head: string; name?: string }): string {
     const { changed, new: added, unchanged, skipped, errors } = summary;
-    const lines = [marker, "### OpenSnapshot", ""];
+    const lines = [markerFor(refs.name), refs.name ? `### OpenSnapshot: ${refs.name}` : "### OpenSnapshot", ""];
     if (!changed && !added && !errors.length) lines.push(`No visual changes. ${unchanged} item${unchanged === 1 ? "" : "s"} match the base (\`${refs.base}\`).`);
     else {
         lines.push(`Compared \`${refs.head}\` with the base \`${refs.base}\`.`, "");

@@ -3,6 +3,9 @@ import type { Item } from "./items.js";
 
 /** Written by `run`, read by the Playwright spec and the reporter. */
 export type Manifest = {
+    name?: string;
+    /** False when the config sets no modes: the review page hides the mode. */
+    showModes: boolean;
     sourceType: "storybook" | "urls";
     items: Item[];
     modes: Record<string, Mode>;

@@ -124,7 +124,8 @@ runs:
         cp .opensnapshot/summary.md "$body"
         [ -n "$ARTIFACT_URL" ] && printf '\n[Download the review page](%s)\n' "$ARTIFACT_URL" >> "$body"
         api="repos/$GITHUB_REPOSITORY/issues"
-        existing=$(gh api "$api/$PR_NUMBER/comments" --paginate --jq '.[] | select(.body | contains("<!-- opensnapshot -->")) | .id' | head -n 1)
+        marker=$(head -n 1 .opensnapshot/summary.md)
+        existing=$(gh api "$api/$PR_NUMBER/comments" --paginate | jq -rs --arg marker "$marker" '[.[][] | select(.body | startswith($marker)) | .id] | first // empty')
         if [ -n "$existing" ]; then
           gh api -X PATCH "$api/comments/$existing" -F body=@"$body" > /dev/null
         else

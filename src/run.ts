@@ -110,6 +110,8 @@ export async function run(options: RunOptions): Promise<number> {
     buildBase(config, refs.root, refs.relDir, refs.mergeBase, baseDir);
 
     const manifest: Manifest = {
+        name: config.name,
+        showModes: config.showModes,
         sourceType: config.source.type,
         items,
         modes: config.modes,

@@ -2,6 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, mkdtempSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { chromium } from "@playwright/test";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
@@ -44,6 +45,22 @@ const reviewData = (dir: string) => {
     return JSON.parse(html.match(/const data = (.*);\n/)![1]!);
 };
 
+/** Opens the review page in a browser and counts the mode chips on the snapshot page and the rows on the list. */
+async function inspectReview(dir: string) {
+    const browser = await chromium.launch();
+    try {
+        const page = await browser.newPage();
+        const url = `file://${path.join(dir, ".opensnapshot/review/index.html")}`;
+        await page.goto(url);
+        const rows = await page.locator("tr.snapshot").count();
+        await page.goto(`${url}#1`);
+        await page.reload();
+        return { rows, chips: await page.locator(".chip").count() };
+    } finally {
+        await browser.close();
+    }
+}
+
 describe("opensnapshot run: plain static site", () => {
     const dir = makeRepo("examples/static-site");
 
@@ -55,7 +72,7 @@ describe("opensnapshot run: plain static site", () => {
         expect(reviewData(dir).items).toEqual([]);
     }, 180_000);
 
-    it("shows only the page whose element changed, and a new page as new", () => {
+    it("shows only the page whose element changed, and a new page as new", async () => {
         edit(path.join(dir, "site/index.html"), "Some text inside a card.", "Some other text inside a card.");
         writeFileSync(path.join(dir, "site/pricing.html"), readFileSync(path.join(dir, "site/about.html"), "utf8").replace("About", "Pricing"));
         edit(path.join(dir, "opensnapshot.config.ts"), '{ name: "about", path: "/about.html" }', '{ name: "about", path: "/about.html" }, "/pricing.html"');
@@ -68,7 +85,7 @@ describe("opensnapshot run: plain static site", () => {
         const data = reviewData(dir);
         expect(data.items.map((item: { id: string }) => item.id)).toEqual(["home", "pricing"]);
         const home = data.items.find((item: { id: string }) => item.id === "home");
-        expect(home.snapshots.map((snapshot: { mode: string }) => snapshot.mode)).toEqual(["desktop", "mobile"]);
+        expect(home.snapshots.map((snapshot: { mode: string }) => snapshot.mode)).toEqual(["dark", "light", "mobile"]);
         for (const snapshot of home.snapshots) {
             expect(snapshot).toMatchObject({ expected: expect.any(String), actual: expect.any(String), changes: expect.any(String) });
             expect(existsSync(path.join(dir, ".opensnapshot/review", snapshot.actual))).toBe(true);
@@ -76,10 +93,34 @@ describe("opensnapshot run: plain static site", () => {
         // The page that did not change leaves no images behind.
         expect(existsSync(path.join(dir, ".opensnapshot/review/img/about"))).toBe(false);
         expect(readFileSync(path.join(dir, ".opensnapshot/summary.md"), "utf8")).toContain("| 1 | 1 | 1 | 0 | 0 |");
+        expect(data.showModes).toBe(true);
+        // Several modes: the page shows the mode (3 for home, 3 for the new page) and a chip on the item page.
+        expect(await inspectReview(dir)).toEqual({ rows: 6, chips: 1 });
     }, 180_000);
 
     it("exits 1 with --fail-on-changes", () => {
         expect(run(dir, "--fail-on-changes").status).toBe(1);
+    }, 180_000);
+});
+
+describe("opensnapshot run: no modes at all", () => {
+    // Same site and change, but a config without `modes`: a plain baseline-versus-change diff.
+    const dir = makeRepo("examples/static-site");
+
+    it("shoots each page once and the review page shows no mode", async () => {
+        edit(path.join(dir, "site/index.html"), "Some text inside a card.", "Some other text inside a card.");
+        commit(dir, "change the card");
+
+        expect(run(dir, "--config", "opensnapshot.simple.config.ts").status).toBe(0);
+        expect(summary(dir)).toMatchObject({ changed: 1, new: 0, unchanged: 1, errors: [] });
+        const data = reviewData(dir);
+        expect(data).toMatchObject({ showModes: false, name: "example-site" });
+        expect(data.items.map((item: { id: string }) => item.id)).toEqual(["home"]);
+        expect(data.items[0].snapshots).toHaveLength(1);
+        expect(data.items[0].snapshots[0]).toMatchObject({ mode: "default", width: 1200 });
+        // One row for the item and no mode chip on its page.
+        expect(await inspectReview(dir)).toEqual({ rows: 1, chips: 0 });
+        expect(readFileSync(path.join(dir, ".opensnapshot/summary.md"), "utf8")).toContain("### OpenSnapshot: example-site");
     }, 180_000);
 });
 

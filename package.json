@@ -6,18 +6,33 @@
   "author": "Gustavo Bispo",
   "type": "module",
   "packageManager": "pnpm@11.21.0",
-  "engines": { "node": ">=20.11" },
-  "bin": { "opensnapshot": "dist/cli.js" },
+  "engines": {
+    "node": ">=20.11"
+  },
+  "bin": {
+    "opensnapshot": "dist/cli.js"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
-  "files": ["dist", "action.yml", "README.md", "LICENSE"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "action.yml",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json && cp src/review.html dist/review.html",
     "typecheck": "tsc --noEmit",
     "test": "vitest run test/unit",
     "test:e2e": "pnpm build && vitest run test/e2e",
-    "prepack": "pnpm build"
+    "prepack": "pnpm build",
+    "docs:images": "pnpm build && node scripts/docs-images.mjs"
   },
   "dependencies": {
     "@playwright/test": "^1.65.1",

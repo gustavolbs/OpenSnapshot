@@ -7,3 +7,11 @@ h1 { margin: 0 0 8px; font-size: 32px; }
 .cta { display: inline-block; padding: 10px 20px; border-radius: 6px; background: var(--accent); color: #fff; text-decoration: none; }
 .card { margin-top: 24px; padding: 16px; border: 1px solid #e3e7ee; border-radius: 8px; }
 footer { color: #5c6570; font-size: 14px; }
+
+/* The "dark" mode in opensnapshot.config.ts turns this on with colorScheme: "dark". */
+@media (prefers-color-scheme: dark) {
+    body { background: #12161c; color: #e6e9ef; }
+    header { border-color: #2a3240; }
+    .card { border-color: #2a3240; background: #1a2029; }
+    footer { color: #9aa4b2; }
+}

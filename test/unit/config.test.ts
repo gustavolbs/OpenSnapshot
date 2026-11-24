@@ -11,6 +11,14 @@ describe("resolveConfig", () => {
         expect(config).toMatchObject({ baseRef: "origin/main", deviceScaleFactor: 2, threshold: 0.2, maxDiffPixelRatio: 0, port: 6106, failOnChanges: false });
         expect(config.outDir).toBe(path.join(project, ".opensnapshot"));
         expect(config.modes).toEqual({ default: { viewport: 1200 } });
+        expect(config.showModes).toBe(false);
+    });
+
+    it("shows modes only when the config sets some", () => {
+        expect(resolveConfig({ ...base, modes: {} }, project).showModes).toBe(false);
+        const config = resolveConfig({ ...base, modes: { dark: { colorScheme: "dark" } } }, project);
+        expect(config.showModes).toBe(true);
+        expect(Object.keys(config.modes)).toEqual(["dark"]);
     });
 
     it("lets CLI overrides win", () => {

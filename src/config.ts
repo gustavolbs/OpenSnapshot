@@ -29,6 +29,8 @@ export type Source =
       };
 
 export type Config = {
+    /** Label for this project on the review page and in the summary, for example `web` or `docs`. */
+    name?: string;
     /** Ref to compare against. Default `origin/main`. */
     baseRef?: string;
     /** How to produce the static site. Without `command`, `output` is served as it is. */
@@ -36,7 +38,10 @@ export type Config = {
     /** Install command that runs in the base checkout before the build. Default: guessed from the lockfile. `false` skips it. */
     install?: string | false;
     source: Source;
-    /** Named render modes. Default `{ default: { viewport: 1200 } }`. */
+    /**
+     * Named render modes, for example one per theme or viewport. Optional: without it every item is shot
+     * once, at 1200x900 with no theme, and the review page shows no mode.
+     */
     modes?: Record<string, Mode>;
     /** Screenshot scale. Default 2. */
     deviceScaleFactor?: number;
@@ -54,9 +59,12 @@ export type Config = {
 
 export type ResolvedConfig = Required<Pick<Config, "baseRef" | "deviceScaleFactor" | "threshold" | "maxDiffPixelRatio" | "port" | "failOnChanges">> &
     Pick<Config, "build" | "install" | "source"> & {
+        name?: string;
         projectDir: string;
         outDir: string;
         modes: Record<string, Mode>;
+        /** False when the config has no `modes`: the review page then hides the mode. */
+        showModes: boolean;
     };
 
 export const defineConfig = (config: Config): Config => config;
@@ -95,8 +103,10 @@ export function resolveConfig(config: Config, projectDir: string, overrides: { b
         build: config.build,
         install: config.install,
         source: config.source,
+        name: config.name,
         projectDir,
         outDir,
+        showModes: Object.keys(config.modes ?? {}).length > 0,
         modes: config.modes && Object.keys(config.modes).length ? config.modes : { default: { viewport: 1200 } },
     };
 }
