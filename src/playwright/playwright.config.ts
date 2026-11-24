@@ -35,7 +35,8 @@ export default defineConfig({
         // Same locale, time zone and font rendering on every machine.
         locale: "en-US",
         timezoneId: "UTC",
-        serviceWorkers: "block",
+        // Storybooks that mock the network with MSW need their service worker.
+        serviceWorkers: "allow",
         launchOptions: { args: ["--font-render-hinting=none", "--disable-lcd-text", "--force-color-profile=srgb", "--hide-scrollbars"] },
     },
 });
