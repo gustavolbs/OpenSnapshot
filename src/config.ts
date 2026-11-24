@@ -43,6 +43,12 @@ export type Config = {
      * once, at 1200x900 with no theme, and the review page shows no mode.
      */
     modes?: Record<string, Mode>;
+    /**
+     * Storybook only. Shoot just the stories that a change since the merge base can affect, found with
+     * `chromatic trace` (offline, no account; install the `chromatic` package). Needs the webpack stats
+     * file in the build output. Without this option every story is shot.
+     */
+    affected?: boolean | { stats?: string; always?: (RegExp | string)[] };
     /** Screenshot scale. Default 2. */
     deviceScaleFactor?: number;
     /** Per-pixel color distance, 0 to 1. Default 0.2 (Playwright's default). */
@@ -60,6 +66,7 @@ export type Config = {
 export type ResolvedConfig = Required<Pick<Config, "baseRef" | "deviceScaleFactor" | "threshold" | "maxDiffPixelRatio" | "port" | "failOnChanges">> &
     Pick<Config, "build" | "install" | "source"> & {
         name?: string;
+        affected?: { stats: string; always: RegExp[] };
         projectDir: string;
         outDir: string;
         modes: Record<string, Mode>;
@@ -93,7 +100,10 @@ export function resolveConfig(config: Config, projectDir: string, overrides: { b
         throw new Error(`opensnapshot config: outDir must be a subfolder of the project (got ${outDir}).`);
     for (const [key, value] of [["threshold", config.threshold], ["maxDiffPixelRatio", config.maxDiffPixelRatio]] as const)
         if (value !== undefined && !(value >= 0 && value <= 1)) throw new Error(`opensnapshot config: ${key} must be between 0 and 1.`);
+    if (config.affected && config.source.type !== "storybook") throw new Error("opensnapshot config: `affected` works with a Storybook source only.");
+    const affected = config.affected ? (config.affected === true ? {} : config.affected) : undefined;
     return {
+        affected: affected && { stats: affected.stats ?? "preview-stats.json", always: (affected.always ?? []).map((pattern) => new RegExp(pattern)) },
         baseRef: overrides.baseRef ?? config.baseRef ?? "origin/main",
         deviceScaleFactor: config.deviceScaleFactor ?? 2,
         threshold: config.threshold ?? 0.2,

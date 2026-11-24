@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, existsSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium } from "@playwright/test";
@@ -11,10 +11,11 @@ const cli = path.join(repoRoot, "dist/cli.js");
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" });
 
 /** A throwaway git repo with `main` committed and a `change` branch checked out. */
-function makeRepo(fixture: string, config?: string) {
+function makeRepo(fixture: string, config?: string, prepare?: (dir: string) => void) {
     const dir = mkdtempSync(path.join(tmpdir(), "opensnapshot-e2e-"));
     cpSync(path.join(repoRoot, fixture), dir, { recursive: true });
     if (config) writeFileSync(path.join(dir, "opensnapshot.config.ts"), config);
+    prepare?.(dir);
     git(dir, "init", "-q", "-b", "main");
     git(dir, "config", "user.email", "test@example.com");
     git(dir, "config", "user.name", "Test");
@@ -146,5 +147,53 @@ export default defineConfig({
         expect(data.items.map((item: { id: string }) => item.id)).toEqual(["button--primary"]);
         expect(data.items[0].snapshots.map((snapshot: { mode: string }) => snapshot.mode)).toEqual(["dark", "light"]);
         expect(data.items[0]).toMatchObject({ title: "UI/Button", name: "Primary" });
+    }, 180_000);
+});
+
+describe("opensnapshot run: only the affected stories", () => {
+    const config = `import { defineConfig } from "opensnapshot";
+export default defineConfig({
+    port: 6108,
+    build: { output: "storybook-static" },
+    source: { type: "storybook", exclude: /secondary/ },
+    affected: true,
+});
+`;
+    // A stand-in for \`chromatic trace\`: it lists a stories file when that file is among the changed ones.
+    const fakeChromatic = `#!/usr/bin/env node
+for (const file of process.argv.slice(2)) if (file.endsWith(".stories.js")) console.log("\u2014 " + file);
+`;
+    const prepare = (dir: string) => {
+        writeFileSync(path.join(dir, "storybook-static/preview-stats.json"), JSON.stringify({ modules: [] }));
+        for (const name of ["button", "card"]) writeFileSync(path.join(dir, `${name}.stories.js`), "// stories\n");
+        mkdirSync(path.join(dir, "node_modules/.bin"), { recursive: true });
+        writeFileSync(path.join(dir, "node_modules/.bin/chromatic"), fakeChromatic);
+        chmodSync(path.join(dir, "node_modules/.bin/chromatic"), 0o755);
+    };
+
+    it("shoots only the stories of a changed stories file", () => {
+        const dir = makeRepo("test/fixtures/storybook-like", config, prepare);
+        edit(path.join(dir, "storybook-static/iframe.html"), '<button class="btn">Primary</button>', '<button class="btn">Primary!</button>');
+        edit(path.join(dir, "button.stories.js"), "// stories", "// stories, changed");
+        commit(dir, "change a story");
+
+        expect(run(dir).status).toBe(0);
+        // 3 stories pass the filter; only button--primary comes from the changed file.
+        expect(summary(dir)).toMatchObject({ changed: 1, new: 0, unchanged: 0, notAffected: 2, errors: [] });
+        expect(reviewData(dir).items.map((item: { id: string }) => item.id)).toEqual(["button--primary"]);
+    }, 180_000);
+
+    it("skips the builds and both passes when no story is affected", () => {
+        const dir = makeRepo("test/fixtures/storybook-like", config, prepare);
+        writeFileSync(path.join(dir, "NOTES.md"), "not a story file\n");
+        commit(dir, "docs only");
+
+        const result = run(dir);
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain("nothing to compare");
+        expect(summary(dir)).toEqual({ changed: 0, new: 0, unchanged: 0, skipped: 0, errors: [], notAffected: 3 });
+        expect(reviewData(dir).items).toEqual([]);
+        expect(readFileSync(path.join(dir, ".opensnapshot/summary.md"), "utf8")).toContain("3 stories are not affected by the change");
+        expect(existsSync(path.join(dir, ".opensnapshot/base"))).toBe(false);
     }, 180_000);
 });

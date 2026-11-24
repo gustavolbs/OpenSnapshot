@@ -10,9 +10,11 @@ export type Item = {
     /** Path and query to open, before mode globals. */
     url: string;
     kind: "story" | "page";
+    /** Storybook: the stories file, as in `index.json`. Used to find the stories a change affects. */
+    importPath?: string;
 };
 
-type IndexEntry = { id: string; title: string; name: string; type?: string };
+type IndexEntry = { id: string; title: string; name: string; type?: string; importPath?: string };
 
 const toRegExp = (value?: RegExp | string) => (value === undefined ? undefined : new RegExp(value));
 
@@ -29,6 +31,7 @@ export function storiesFromIndex(index: { entries?: Record<string, IndexEntry> }
             name: entry.name,
             url: `/iframe.html?id=${encodeURIComponent(entry.id)}&viewMode=story`,
             kind: "story" as const,
+            importPath: entry.importPath,
         }))
         .sort((a, b) => a.id.localeCompare(b.id));
 }

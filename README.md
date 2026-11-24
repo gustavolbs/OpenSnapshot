@@ -238,6 +238,7 @@ Run all commands from the folder that holds the config.
 | `build.command` | none | Builds the site. Runs for the head in the project and for the base in the temporary checkout. Leave it out to serve `output` as it is. |
 | `install` | from the lockfile | Install command for the base checkout: `pnpm install --frozen-lockfile`, `yarn install --immutable`, `npm ci` or `bun install --frozen-lockfile`. `false` skips it. |
 | `source` | required | `{ type: "storybook", include?, exclude? }` or `{ type: "urls", pages }`. |
+| `affected` | off | Storybook only. Shoot only the stories a change can reach. `true` or `{ stats?, always? }`. See below. |
 | `modes` | none (one default shot) | Named renderings; each item is shot once per mode. **Optional.** See below. |
 | `baseRef` | `origin/main` | Ref to compare with. `--base` overrides it. |
 | `deviceScaleFactor` | `2` | Screenshot scale. |
@@ -264,6 +265,23 @@ export const Animated = { parameters: { opensnapshot: { delay: 300 } } };
 export const Random = { parameters: { opensnapshot: { disable: true } } };
 ```
 
+**Only the affected stories** (`affected`, Storybook only). By default every story is shot twice per run. With `affected: true`, OpenSnapshot lists the files changed since the merge base, traces which stories import them, and shoots only those. When no story is affected, it skips the base build and both passes and still writes the review page and summary. The review page lists only what changed, as always; the summary adds how many stories were left out.
+
+```ts
+export default defineConfig({
+  // ...
+  affected: { always: [/^public\//] }, // optional: a change here affects every story
+});
+```
+
+How it works and what it needs:
+
+- The trace runs `chromatic trace`, which reads a webpack stats file offline. It needs no account and no token. Add the `chromatic` package as a dev dependency; OpenSnapshot looks for `node_modules/.bin/chromatic` in the project and in the repo root.
+- Build Storybook with `storybook build --stats-json`, so `preview-stats.json` lands in the build output. The file name can change with `affected.stats`. Vite builds have no such file unless a plugin writes a webpack-style one.
+- A change to the preview config, or to anything it imports, affects every story. So does a change to a file that matches `always`. Use `always` for files that are served as they are (images, fonts, `public/`), because the stats cannot trace them.
+- A changed dependency counts too: the lockfile diff names the packages, and the modules of those packages in the stats become changed files. OpenSnapshot reads yarn (v2 and later), pnpm and `package-lock.json`. If a lockfile changed and no package name can be read from it, every story is shot.
+- `package.json` changes alone are ignored; the lockfile carries the real change.
+
 **Deterministic rendering.** Per mode: fixed viewport and scale. Always: CSS animations and transitions disabled, caret hidden, fonts awaited (`document.fonts.ready`), `en-US` locale, UTC time zone, service workers blocked, and Chromium flags for stable text (`--font-render-hinting=none`, `--disable-lcd-text`, `--force-color-profile=srgb`, `--hide-scrollbars`). Both passes run on the same machine, so the remaining noise is yours: random data, clocks, remote images and JavaScript animations. Mock them or use a story `delay`.
 
 ## How it differs from Chromatic
@@ -276,7 +294,22 @@ export const Random = { parameters: { opensnapshot: { disable: true } } };
 | Approval workflow | None: you read the page | Accept or deny, with status checks |
 | Browsers | Chromium | Several |
 | Cost | Your CI minutes | Per-snapshot plans |
-| Unaffected stories | All listed items are shot every run | TurboSnap skips them |
+| Unaffected stories | All shot every run, or only the affected ones with `affected` (Storybook, webpack stats) | TurboSnap skips them |
+
+### Cost compared with Chromatic
+
+OpenSnapshot has no per-snapshot fee. What you pay for is the infrastructure you already use:
+
+| Cost | Chromatic | OpenSnapshot |
+| --- | --- | --- |
+| Per snapshot | About $0.008 for each snapshot over the plan, on public listings | None |
+| Plan | Free tier of 5,000 snapshots a month; paid tiers from about $179 a month (Starter) to $399 (Pro, 85,000 snapshots) | None |
+| Compute | Included | CI minutes. GitHub Actions bills Linux 2-core runners at $0.006 a minute on private repositories; public repositories are free |
+| Review page | Included | The Actions artifact (counts against artifact storage), or a static host such as Vercel |
+
+Prices as read from public pages and listings in November 2026. Plans change and the numbers differ between sources, so check [chromatic.com/pricing](https://www.chromatic.com/pricing), [GitHub's runner pricing](https://docs.github.com/en/billing/reference/actions-runner-pricing) and [vercel.com/pricing](https://vercel.com/pricing) before you decide.
+
+A rough way to compare, with your own numbers: Chromatic cost per run is `snapshots x $0.008` once you pass the plan. OpenSnapshot cost per run is `minutes x $0.006`. For example, 600 snapshots (200 stories in 3 modes) is $4.80 on Chromatic's per-snapshot rate, and 10 CI minutes is $0.06 on a private repository. The 10 minutes is an assumption; measure a real run. The gap shrinks as runs get long: OpenSnapshot builds twice and shoots every item twice, so a large Storybook without `affected` costs more minutes. Chromatic also counts a snapshot per browser and skips unaffected stories with TurboSnap, so its number can be lower than the example too.
 
 OpenSnapshot is for teams that want a visual diff on every pull request without a service. It is not a review workflow: it does not block merges and has no approval state. The review page layout is inspired by hosted visual-review tools.
 
@@ -284,7 +317,7 @@ OpenSnapshot is for teams that want a visual diff on every pull request without 
 
 - Chromium only, on one operating system per run. There are no stored baselines, so there is nothing to mix between local and CI.
 - Static output only. A site that needs a running server must be exported first. Pages are served from the built folder on `127.0.0.1`.
-- Every listed item is shot twice on every run. There is **no affected-story tracing**: working out which stories a change can reach depends on bundler statistics and a dependency tracer, which does not generalize across Vite, webpack and plain sites. Use `include`, `exclude` and a short `modes` list to keep runs fast.
+- Every listed item is shot twice on every run, unless you turn on `affected`. That option covers Storybook builds with a webpack stats file; plain sites and Vite builds shoot everything. Use `include`, `exclude` and a short `modes` list to keep runs fast.
 - The base build runs a full install and build in a checkout of the merge base on every run. Large monorepos pay for that.
 - The Storybook path reads `window.__STORYBOOK_PREVIEW__`, an internal Storybook API. It has been exercised against Storybook 10 (`@storybook/html-vite`) and a stand-in preview, not against every version or framework.
 - The composite action targets Linux runners, because the browser cache path is Linux's.

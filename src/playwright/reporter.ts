@@ -1,11 +1,10 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { Reporter, TestCase, TestResult } from "@playwright/test/reporter";
 import { PNG } from "pngjs";
 import { diffLayers, type Image } from "../layers.js";
 import type { ChangedItem, Manifest, Snapshot, Summary } from "../manifest.js";
-import { summaryMarkdown } from "../summary.js";
+import { writeReviewPage, writeSummary } from "../review-page.js";
 
 const out = process.env.OPENSNAPSHOT_OUT!;
 const dir = path.join(out, "review");
@@ -88,8 +87,7 @@ export default class ReviewReporter implements Reporter {
             errors: this.errors,
             items: this.changed.sort((a, b) => a.title.localeCompare(b.title)),
         };
-        const template = readFileSync(fileURLToPath(new URL("../review.html", import.meta.url)), "utf8");
-        writeFileSync(path.join(dir, "index.html"), template.replace("/*DATA*/null", () => JSON.stringify(data).replace(/</g, "\\u003c")));
+        writeReviewPage(dir, data);
 
         const isNew = (item: ChangedItem) => item.snapshots.every((snapshot) => !snapshot.expected);
         const summary: Summary = {
@@ -98,9 +96,9 @@ export default class ReviewReporter implements Reporter {
             unchanged: this.unchanged,
             skipped: this.skipped,
             errors: this.errors,
+            notAffected: manifest.notAffected,
         };
-        writeFileSync(path.join(out, "summary.json"), JSON.stringify(summary, null, 2));
-        writeFileSync(path.join(out, "summary.md"), summaryMarkdown(summary, { name: manifest.name, base: manifest.base.ref || manifest.base.sha, head: manifest.head.ref || manifest.head.sha }));
+        writeSummary(out, summary, { name: manifest.name, base: manifest.base.ref || manifest.base.sha, head: manifest.head.ref || manifest.head.sha });
     }
 
     // The CLI prints the outcome. Claiming stdio stops Playwright from adding its noisy default reporter.

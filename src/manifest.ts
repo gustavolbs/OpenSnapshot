@@ -11,6 +11,8 @@ export type Manifest = {
     modes: Record<string, Mode>;
     base: { sha: string; ref: string };
     head: { sha: string; ref: string };
+    /** Stories left out because the change cannot affect them (`affected` option). */
+    notAffected?: number;
 };
 
 export type Snapshot = {
@@ -33,4 +35,5 @@ export type Summary = {
     unchanged: number;
     skipped: number;
     errors: { id: string; message: string }[];
+    notAffected?: number;
 };

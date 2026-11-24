@@ -3,10 +3,12 @@ import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writ
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { findAffected } from "./affected.js";
 import { findConfig, loadConfig, resolveConfig, type ResolvedConfig } from "./config.js";
 import { detectInstall, git, resolveRefs } from "./git.js";
 import { pagesToItems, storiesFromIndex, type Item } from "./items.js";
 import type { Manifest, Summary } from "./manifest.js";
+import { writeReviewPage, writeSummary } from "./review-page.js";
 import { close, serve } from "./serve.js";
 
 export type RunOptions = { cwd: string; config?: string; base?: string; out?: string; failOnChanges?: boolean };
@@ -102,9 +104,23 @@ export async function run(options: RunOptions): Promise<number> {
     if (config.build?.command) sh(config.build.command, config.projectDir);
     const headDir = path.resolve(config.projectDir, config.build!.output);
     if (!existsSync(headDir)) throw new Error(`build.output not found: ${headDir}`);
-    const items = discover(config, headDir);
-    if (!items.length) throw new Error("No stories or pages to screenshot.");
+    const all = discover(config, headDir);
+    if (!all.length) throw new Error("No stories or pages to screenshot.");
+    const items = config.affected ? findAffected(all, config, refs, headDir) : all;
+    const notAffected = all.length - items.length;
+    if (config.affected) log(`${items.length} of ${all.length} stories can be affected by the change`);
     log(`${items.length} ${config.source.type === "storybook" ? "stories" : "pages"} x ${Object.keys(config.modes).length} mode(s)`);
+
+    const base = { sha: refs.mergeBase.slice(0, 9), ref: refs.baseName };
+    const head = { sha: refs.headSha.slice(0, 9), ref: refs.headRef };
+    if (!items.length) {
+        // Nothing to compare: skip the base build and both passes, but leave the same files behind.
+        const summary: Summary = { changed: 0, new: 0, unchanged: 0, skipped: 0, errors: [], notAffected };
+        writeReviewPage(path.join(config.outDir, "review"), { name: config.name, showModes: config.showModes, base, head, labels: { group: "Components", item: "Stories" }, groups: 0, unchanged: 0, skipped: 0, errors: [], items: [] });
+        writeSummary(config.outDir, summary, { name: config.name, base: base.ref || base.sha, head: head.ref || head.sha });
+        log("no story is affected by the change: nothing to compare");
+        return 0;
+    }
 
     const baseDir = path.join(config.outDir, "base");
     buildBase(config, refs.root, refs.relDir, refs.mergeBase, baseDir);
@@ -115,8 +131,9 @@ export async function run(options: RunOptions): Promise<number> {
         sourceType: config.source.type,
         items,
         modes: config.modes,
-        base: { sha: refs.mergeBase.slice(0, 9), ref: refs.baseName },
-        head: { sha: refs.headSha.slice(0, 9), ref: refs.headRef },
+        base,
+        head,
+        notAffected,
     };
     const manifestFile = path.join(config.outDir, "manifest.json");
     writeFileSync(manifestFile, JSON.stringify(manifest, null, 2));
