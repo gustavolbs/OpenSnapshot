@@ -1,0 +1,10 @@
+{
+  "v": 5,
+  "entries": {
+    "button--primary": { "type": "story", "id": "button--primary", "title": "UI/Button", "name": "Primary", "importPath": "./button.stories.js" },
+    "button--secondary": { "type": "story", "id": "button--secondary", "title": "UI/Button", "name": "Secondary", "importPath": "./button.stories.js" },
+    "card--basic": { "type": "story", "id": "card--basic", "title": "UI/Card", "name": "Basic", "importPath": "./card.stories.js" },
+    "card--off": { "type": "story", "id": "card--off", "title": "UI/Card", "name": "Turned off", "importPath": "./card.stories.js" },
+    "ui-button--docs": { "type": "docs", "id": "ui-button--docs", "title": "UI/Button", "name": "Docs", "importPath": "./button.mdx" }
+  }
+}

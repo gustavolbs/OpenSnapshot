@@ -1,0 +1,33 @@
+{
+  "name": "opensnapshot",
+  "version": "0.1.0",
+  "description": "Visual diff for Storybook and static sites: build the base and the head, screenshot both with Playwright, and review only what changed.",
+  "license": "MIT",
+  "author": "Gustavo Bispo",
+  "type": "module",
+  "packageManager": "pnpm@11.21.0",
+  "engines": { "node": ">=20.11" },
+  "bin": { "opensnapshot": "dist/cli.js" },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist", "action.yml", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && cp src/review.html dist/review.html",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run test/unit",
+    "test:e2e": "pnpm build && vitest run test/e2e",
+    "prepack": "pnpm build"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.65.1",
+    "jiti": "^2.7.0",
+    "pngjs": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/pngjs": "^6.0.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.1"
+  }
+}

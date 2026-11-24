@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Storybook-like preview</title>
+<style>
+  body { margin: 0; padding: 24px; font: 16px system-ui, sans-serif; background: #fff; color: #111; }
+  body[data-theme="dark"] { background: #111; color: #eee; }
+  .btn { padding: 8px 16px; border: 0; border-radius: 4px; background: #0b5fff; color: #fff; }
+  .btn.secondary { background: #e3e7ee; color: #111; }
+  .card { width: 240px; padding: 16px; border: 1px solid #888; border-radius: 8px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+// A stand-in for the Storybook preview: it exposes the same two hooks OpenSnapshot reads.
+const stories = {
+  "button--primary": { html: '<button class="btn">Primary</button>' },
+  "button--secondary": { html: '<button class="btn secondary">Secondary</button>' },
+  "card--basic": { html: '<div class="card"><b>Card</b><p>Basic card.</p></div>' },
+  "card--off": { html: '<div class="card">Random <span id="now"></span></div>', parameters: { opensnapshot: { disable: true } } },
+};
+const params = new URLSearchParams(location.search);
+const globals = Object.fromEntries((params.get("globals") || "").split(";").filter(Boolean).map((pair) => pair.split(":")));
+document.body.dataset.theme = globals.theme || "light";
+const story = stories[params.get("id")];
+window.__STORYBOOK_PREVIEW__ = {
+  storyStoreValue: {
+    loadStory: async ({ storyId }) => {
+      if (!stories[storyId]) throw new Error("No such story");
+      return { parameters: stories[storyId].parameters || {} };
+    },
+  },
+  currentRender: { phase: "rendering" },
+};
+if (story) document.getElementById("root").innerHTML = story.html;
+setTimeout(() => { window.__STORYBOOK_PREVIEW__.currentRender.phase = "completed"; }, 50);
+</script>
+</body>
+</html>

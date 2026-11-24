@@ -1,0 +1,137 @@
+name: OpenSnapshot
+description: Visual diff for Storybook and static sites. Builds the base and the head, screenshots both with Playwright and uploads a review page with only what changed.
+inputs:
+  working-directory:
+    description: Folder that holds opensnapshot.config.ts.
+    default: "."
+  base-ref:
+    description: Ref to compare against. Default is origin/<the pull request base>, or origin/main outside pull requests.
+    default: ""
+  config:
+    description: Path to the config file, if it is not opensnapshot.config.ts in the working directory.
+    default: ""
+  fail-on-changes:
+    description: Fail the step when something changed. Errors always fail it.
+    default: "false"
+  comment:
+    description: Post (or update) a summary comment on the pull request. Needs `pull-requests - write` permission.
+    default: "false"
+  github-token:
+    description: Token for the comment.
+    default: ${{ github.token }}
+  artifact-name:
+    description: Name of the uploaded artifact.
+    default: opensnapshot-review
+  retention-days:
+    description: Days to keep the artifact.
+    default: "14"
+outputs:
+  changed:
+    description: Number of changed items.
+    value: ${{ steps.result.outputs.changed }}
+  new:
+    description: Number of new items.
+    value: ${{ steps.result.outputs.new }}
+  errors:
+    description: Number of items that failed to render.
+    value: ${{ steps.result.outputs.errors }}
+  artifact-url:
+    description: URL of the uploaded review artifact.
+    value: ${{ steps.upload.outputs.artifact-url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Fetch the history the merge base needs
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        BASE_REF: ${{ inputs.base-ref || (github.base_ref && format('origin/{0}', github.base_ref)) || 'origin/main' }}
+      run: |
+        if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+          git fetch --no-tags --unshallow origin || echo "::warning::Could not unshallow the clone. Use actions/checkout with fetch-depth: 0."
+        fi
+        if ! git rev-parse --verify --quiet "$BASE_REF" > /dev/null; then
+          git fetch --no-tags origin "+refs/heads/${BASE_REF#origin/}:refs/remotes/$BASE_REF" || echo "::warning::Could not fetch $BASE_REF."
+        fi
+
+    - name: Install OpenSnapshot
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        npm exec --yes --package=pnpm@11.21.0 -- pnpm install --frozen-lockfile
+        npm exec --yes --package=pnpm@11.21.0 -- pnpm build
+        echo "PLAYWRIGHT_VERSION=$(node -p "require('./node_modules/@playwright/test/package.json').version")" >> "$GITHUB_ENV"
+
+    - name: Cache Playwright browsers
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ms-playwright
+        key: opensnapshot-playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
+
+    - name: Install the browser
+      shell: bash
+      run: node "${{ github.action_path }}/dist/cli.js" install --with-deps chromium
+
+    - name: Compare with the base
+      id: run
+      continue-on-error: true
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        BASE_REF: ${{ inputs.base-ref || (github.base_ref && format('origin/{0}', github.base_ref)) || 'origin/main' }}
+        CONFIG: ${{ inputs.config }}
+        FAIL_ON_CHANGES: ${{ inputs.fail-on-changes }}
+      run: |
+        args=(run --base "$BASE_REF")
+        [ -n "$CONFIG" ] && args+=(--config "$CONFIG")
+        [ "$FAIL_ON_CHANGES" = "true" ] && args+=(--fail-on-changes)
+        node "${{ github.action_path }}/dist/cli.js" "${args[@]}"
+
+    - name: Read the result
+      id: result
+      if: ${{ !cancelled() }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        if [ -f .opensnapshot/summary.json ]; then
+          node -e 'const s = require("./.opensnapshot/summary.json"); console.log(`changed=${s.changed}\nnew=${s.new}\nerrors=${s.errors.length}`)' >> "$GITHUB_OUTPUT"
+          cat .opensnapshot/summary.md >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - name: Upload the review page
+      id: upload
+      if: ${{ !cancelled() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.working-directory }}/.opensnapshot/review
+        if-no-files-found: ignore
+        retention-days: ${{ inputs.retention-days }}
+
+    - name: Comment on the pull request
+      if: ${{ !cancelled() && inputs.comment == 'true' && github.event_name == 'pull_request' }}
+      continue-on-error: true
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+      run: |
+        [ -f .opensnapshot/summary.md ] || exit 0
+        body=$(mktemp)
+        cp .opensnapshot/summary.md "$body"
+        [ -n "$ARTIFACT_URL" ] && printf '\n[Download the review page](%s)\n' "$ARTIFACT_URL" >> "$body"
+        api="repos/$GITHUB_REPOSITORY/issues"
+        existing=$(gh api "$api/$PR_NUMBER/comments" --paginate --jq '.[] | select(.body | contains("<!-- opensnapshot -->")) | .id' | head -n 1)
+        if [ -n "$existing" ]; then
+          gh api -X PATCH "$api/comments/$existing" -F body=@"$body" > /dev/null
+        else
+          gh api -X POST "$api/$PR_NUMBER/comments" -F body=@"$body" > /dev/null
+        fi
+
+    - name: Fail if the comparison failed
+      if: ${{ steps.run.outcome == 'failure' }}
+      shell: bash
+      run: exit 1
