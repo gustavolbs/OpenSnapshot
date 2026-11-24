@@ -309,7 +309,7 @@ How it works and what it needs:
 - A changed dependency counts too: the lockfile diff names the packages, and the modules of those packages in the stats become changed files. OpenSnapshot reads yarn (v2 and later), pnpm and `package-lock.json`. If a lockfile changed and no package name can be read from it, every story is shot.
 - `package.json` changes alone are ignored; the lockfile carries the real change.
 
-**Deterministic rendering.** Per mode: fixed viewport and scale. Always: CSS animations and transitions disabled, caret hidden, fonts awaited (`document.fonts.ready`), `en-US` locale, UTC time zone, service workers blocked, and Chromium flags for stable text (`--font-render-hinting=none`, `--disable-lcd-text`, `--force-color-profile=srgb`, `--hide-scrollbars`). Both passes run on the same machine, so the remaining noise is yours: random data, clocks, remote images and JavaScript animations. Mock them or use a story `delay`.
+**Deterministic rendering.** Per mode: fixed viewport and scale. Always: CSS animations and transitions disabled, caret hidden, fonts awaited (`document.fonts.ready`), videos paused on their first frame, `en-US` locale, UTC time zone, and Chromium flags for stable text (`--font-render-hinting=none`, `--disable-lcd-text`, `--force-color-profile=srgb`, `--hide-scrollbars`). Both passes run on the same machine, so the remaining noise is yours: random data, clocks, remote images and JavaScript animations. Mock them or use a story `delay`.
 
 ## How it differs from Chromatic
 

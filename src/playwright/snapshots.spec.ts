@@ -23,6 +23,27 @@ const readStory = (page: Page, id: string) =>
         return story && { opensnapshot: story.parameters.opensnapshot ?? {} };
     }, id);
 
+// A playing video never gives two equal screenshots in a row. Pause every video on its first frame.
+async function freezeVideos() {
+    const settle = (video: HTMLVideoElement, event: string) =>
+        new Promise((resolve) => {
+            video.addEventListener(event, resolve, { once: true });
+            setTimeout(resolve, 3000);
+        });
+    await Promise.all(
+        [...document.querySelectorAll("video")].map(async (video) => {
+            video.autoplay = false;
+            video.pause();
+            if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA && video.networkState === HTMLMediaElement.NETWORK_LOADING)
+                await settle(video, "loadeddata");
+            if (video.currentTime !== 0) {
+                video.currentTime = 0;
+                await settle(video, "seeked");
+            }
+        })
+    );
+}
+
 for (const item of manifest.items) {
     test(item.id, async ({ page }) => {
         let options: NonNullable<StoryParameters> = {};
@@ -47,6 +68,7 @@ for (const item of manifest.items) {
                 throw new Error(`${item.url} answered ${response.status()}.`);
             }
             await page.evaluate(() => document.fonts.ready);
+            await page.evaluate(freezeVideos);
             if (options.delay) await page.waitForTimeout(options.delay);
             await expect.soft(page).toHaveScreenshot([item.id, `${name}.png`], { fullPage: true });
         }
